@@ -30,7 +30,7 @@ model Product {
   categoryId Int
   category   Category @relation(fields: [categoryId], references: [id])
 
-  name  String
+  name  String  @unique
   brand String?
   unit  String
 
@@ -60,8 +60,9 @@ model Supplier {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  batches   ProductBatch[]
-  purchases Purchase[]
+  batches          ProductBatch[]
+  purchases        Purchase[]
+  supplierPayments SupplierPayment[]
 }
 
 model ProductBatch {
@@ -80,15 +81,17 @@ model ProductBatch {
   quantityRemaining Int
 
   manufactureDate DateTime?
-  expiryDate      DateTime
+  expiryDate      DateTime?
 
   purchaseDate DateTime
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  purchaseItems PurchaseItem[]
-  saleItems     SaleItem[]
+  purchaseItems    PurchaseItem[]
+  saleItems        SaleItem[]
+  damages          Damage[]
+  stockAdjustments StockAdjustment[]
 }
 
 model Purchase {
@@ -210,150 +213,143 @@ model CustomerPayment {
 }
 
 model ExpenseCategory {
-  id          Int      @id @default(autoincrement())
+  id Int @id @default(autoincrement())
 
-  name        String   @unique
+  name String @unique
 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  expenses    Expense[]
+  expenses Expense[]
 }
 
 model Expense {
-  id                 Int      @id @default(autoincrement())
+  id Int @id @default(autoincrement())
 
-  categoryId         Int
-  category           ExpenseCategory @relation(fields: [categoryId], references: [id])
+  categoryId Int
+  category   ExpenseCategory @relation(fields: [categoryId], references: [id])
 
-  amount             Decimal @db.Decimal(12,2)
+  amount Decimal @db.Decimal(12, 2)
 
-  expenseDate        DateTime
+  expenseDate DateTime
 
-  description        String?
+  description String?
 
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
-
 model CashBook {
-  id             Int      @id @default(autoincrement())
+  id Int @id @default(autoincrement())
 
   transactionDate DateTime
 
-  type           String
+  type String
 
-  amount         Decimal @db.Decimal(12,2)
+  amount Decimal @db.Decimal(12, 2)
 
-  description    String?
+  description String?
 
-  referenceType  String?
+  referenceType String?
 
-  referenceId    Int?
+  referenceId Int?
 
-  createdAt      DateTime @default(now())
+  createdAt DateTime @default(now())
 }
 
 model SupplierPayment {
-  id             Int      @id @default(autoincrement())
+  id Int @id @default(autoincrement())
 
-  supplierId     Int
-  supplier       Supplier @relation(fields: [supplierId], references: [id])
+  supplierId Int
+  supplier   Supplier @relation(fields: [supplierId], references: [id])
 
-  amount         Decimal  @db.Decimal(12,2)
+  amount Decimal @db.Decimal(12, 2)
 
-  paymentDate    DateTime
+  paymentDate DateTime
 
-  paymentMethod  String
+  paymentMethod String
 
-  note           String?
+  note String?
 
-  createdAt      DateTime @default(now())
+  createdAt DateTime @default(now())
 }
-
 
 model Damage {
-  id             Int      @id @default(autoincrement())
+  id Int @id @default(autoincrement())
 
-  batchId        Int
-  batch          ProductBatch @relation(fields: [batchId], references: [id])
+  batchId Int
+  batch   ProductBatch @relation(fields: [batchId], references: [id])
 
-  quantity       Int
+  quantity Int
 
-  reason         String?
+  reason String?
 
-  damageDate     DateTime
+  damageDate DateTime
 
-  createdAt      DateTime @default(now())
+  createdAt DateTime @default(now())
 }
-
 
 model StockAdjustment {
-  id              Int      @id @default(autoincrement())
+  id Int @id @default(autoincrement())
 
-  batchId         Int
-  batch           ProductBatch @relation(fields: [batchId], references: [id])
+  batchId Int
+  batch   ProductBatch @relation(fields: [batchId], references: [id])
 
-  previousStock   Int
+  previousStock Int
 
-  newStock        Int
+  newStock Int
 
-  reason          String?
+  reason String?
 
-  adjustmentDate  DateTime
+  adjustmentDate DateTime
 
-  createdAt       DateTime @default(now())
+  createdAt DateTime @default(now())
 }
 
-
 model ActivityLog {
-  id          Int      @id @default(autoincrement())
+  id Int @id @default(autoincrement())
 
-  action      String
+  action String
 
-  module      String
+  module String
 
   referenceId Int?
 
   description String?
 
-  createdAt   DateTime @default(now())
+  createdAt DateTime @default(now())
 }
-
 
 model User {
-  id           Int      @id @default(autoincrement())
+  id Int @id @default(autoincrement())
 
-  name         String
+  name String
 
-  username     String   @unique
+  username String @unique
 
-  password     String
+  password String
 
-  role         String
+  role String
 
-  isActive     Boolean  @default(true)
+  isActive Boolean @default(true)
 
-  createdAt    DateTime @default(now())
+  createdAt DateTime @default(now())
 
-  updatedAt    DateTime @updatedAt
+  updatedAt DateTime @updatedAt
 }
-
 
 model Settings {
-  id               Int      @id @default(autoincrement())
+  id Int @id @default(autoincrement())
 
-  shopName         String
+  shopName String
 
-  shopAddress      String?
+  shopAddress String?
 
-  shopPhone        String?
+  shopPhone String?
 
-  currency         String   @default("BDT")
+  currency String @default("BDT")
 
-  createdAt        DateTime @default(now())
+  createdAt DateTime @default(now())
 
-  updatedAt        DateTime @updatedAt
+  updatedAt DateTime @updatedAt
 }
-
