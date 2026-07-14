@@ -7,6 +7,9 @@ import { prisma } from "@/lib/prisma";
 export async function GET() {
     try {
         const expenses = await prisma.expense.findMany({
+            include: {
+                category: true,
+            },
             orderBy: {
                 expenseDate: "desc",
             },
@@ -81,6 +84,23 @@ export async function POST(request: Request) {
                 amount: Number(amount),
                 expenseDate: new Date(expenseDate),
                 description,
+            },
+        });
+
+        // Cash Book Entry
+        await prisma.cashBook.create({
+            data: {
+                transactionDate: new Date(expenseDate),
+
+                type: "Expense",
+
+                amount: Number(amount),
+
+                description,
+
+                referenceType: "Expense",
+
+                referenceId: expense.id,
             },
         });
 

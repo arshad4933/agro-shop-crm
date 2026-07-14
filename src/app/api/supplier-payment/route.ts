@@ -107,6 +107,26 @@ export async function POST(request: Request) {
                 },
             });
 
+            // =======================
+            // CASH BOOK ENTRY
+            // =======================
+            await tx.cashBook.create({
+                data: {
+                    transactionDate: new Date(paymentDate),
+
+                    type: "Expense",
+
+                    amount: Number(amount),
+
+                    description:
+                        note || "Supplier Payment",
+
+                    referenceType: "SupplierPayment",
+
+                    referenceId: payment.id,
+                },
+            });
+
             return payment;
         });
 

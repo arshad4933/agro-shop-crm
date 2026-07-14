@@ -56,7 +56,8 @@ export async function POST(request: Request) {
     ) {
       return NextResponse.json(
         {
-          message: "Customer, Sale, Amount, Payment Method and Payment Date are required",
+          message:
+            "Customer, Sale, Amount, Payment Method and Payment Date are required",
         },
         {
           status: 400,
@@ -99,6 +100,26 @@ export async function POST(request: Request) {
         data: {
           paidAmount: Number(sale.paidAmount) + payAmount,
           dueAmount: Number(sale.dueAmount) - payAmount,
+        },
+      });
+
+      // =======================
+      // CASH BOOK ENTRY
+      // =======================
+      await tx.cashBook.create({
+        data: {
+          transactionDate: new Date(paymentDate),
+
+          type: "Income",
+
+          amount: payAmount,
+
+          description:
+            note || `Customer Payment - Invoice ${sale.invoiceNo}`,
+
+          referenceType: "CustomerPayment",
+
+          referenceId: payment.id,
         },
       });
 
