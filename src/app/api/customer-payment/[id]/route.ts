@@ -48,56 +48,6 @@ export async function GET(
 }
 
 // =======================
-// UPDATE CUSTOMER PAYMENT
-// =======================
-export async function PUT(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  try {
-    const { id } = await params;
-    const body = await request.json();
-
-    const payment = await prisma.customerPayment.findUnique({
-      where: {
-        id: Number(id),
-      },
-    });
-
-    if (!payment) {
-      return NextResponse.json(
-        {
-          message: "Customer payment not found",
-        },
-        {
-          status: 404,
-        }
-      );
-    }
-
-    return NextResponse.json(
-      {
-        message: "Update customer payment will be implemented later",
-      },
-      {
-        status: 501,
-      }
-    );
-  } catch (error) {
-    console.error(error);
-
-    return NextResponse.json(
-      {
-        message: "Failed to update customer payment",
-      },
-      {
-        status: 500,
-      }
-    );
-  }
-}
-
-// =======================
 // DELETE CUSTOMER PAYMENT
 // =======================
 export async function DELETE(
@@ -128,6 +78,7 @@ export async function DELETE(
         throw new Error("Sale not found");
       }
 
+      // Restore paid/due amount
       await tx.sale.update({
         where: {
           id: sale.id,
@@ -156,10 +107,7 @@ export async function DELETE(
     return NextResponse.json(
       {
         message: "Failed to delete customer payment",
-        error:
-          error instanceof Error
-            ? error.message
-            : String(error),
+        error: error instanceof Error ? error.message : String(error),
       },
       {
         status: 500,

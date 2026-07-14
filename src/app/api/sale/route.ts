@@ -79,69 +79,52 @@ export async function POST(request: Request) {
         profit: number;
       }[] = [];
 
-      // FIFO
+      // =======================
+      // MANUAL BATCH SELECTION
+      // =======================
       for (const item of items) {
-        let remainingQty = Number(item.quantity);
-
-        const batches = await tx.productBatch.findMany({
+        const batch = await tx.productBatch.findUnique({
           where: {
-            productId: Number(item.productId),
-            quantityRemaining: {
-              gt: 0,
-            },
-          },
-          orderBy: {
-            purchaseDate: "asc",
+            id: Number(item.batchId),
           },
         });
 
-        if (batches.length === 0) {
-          throw new Error("Product is out of stock");
+        if (!batch) {
+          throw new Error("Batch not found");
         }
 
-        for (const batch of batches) {
-          if (remainingQty <= 0) break;
-
-          const sellQty = Math.min(
-            remainingQty,
-            batch.quantityRemaining
-          );
-
-          const total =
-            sellQty * Number(batch.sellingPrice);
-
-          const profit =
-            sellQty *
-            (Number(batch.sellingPrice) -
-              Number(batch.purchasePrice));
-
-          totalAmount += total;
-
-          saleItems.push({
-            batchId: batch.id,
-            quantity: sellQty,
-            buyPrice: Number(batch.purchasePrice),
-            sellPrice: Number(batch.sellingPrice),
-            totalPrice: total,
-            profit,
-          });
-
-          await tx.productBatch.update({
-            where: {
-              id: batch.id,
-            },
-            data: {
-              quantityRemaining:
-                batch.quantityRemaining - sellQty,
-            },
-          });
-
-          remainingQty -= sellQty;
-        }
-
-        if (remainingQty > 0) {
+        if (batch.quantityRemaining < Number(item.quantity)) {
           throw new Error("Not enough stock available");
         }
+
+        const total =
+          Number(item.quantity) * Number(batch.sellingPrice);
+
+        const profit =
+          Number(item.quantity) *
+          (Number(batch.sellingPrice) -
+            Number(batch.purchasePrice));
+
+        totalAmount += total;
+
+        saleItems.push({
+          batchId: batch.id,
+          quantity: Number(item.quantity),
+          buyPrice: Number(batch.purchasePrice),
+          sellPrice: Number(batch.sellingPrice),
+          totalPrice: total,
+          profit,
+        });
+
+        await tx.productBatch.update({
+          where: {
+            id: batch.id,
+          },
+          data: {
+            quantityRemaining:
+              batch.quantityRemaining - Number(item.quantity),
+          },
+        });
       }
 
       const discountAmount = Number(discount || 0);
