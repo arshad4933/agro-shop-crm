@@ -6,6 +6,7 @@ export async function GET() {
         // =======================
         // SALES
         // =======================
+
         const sales = await prisma.sale.aggregate({
             _sum: {
                 totalAmount: true,
@@ -15,6 +16,7 @@ export async function GET() {
         // =======================
         // PURCHASE
         // =======================
+
         const purchases = await prisma.purchase.aggregate({
             _sum: {
                 totalAmount: true,
@@ -24,6 +26,7 @@ export async function GET() {
         // =======================
         // EXPENSE
         // =======================
+
         const expenses = await prisma.expense.aggregate({
             _sum: {
                 amount: true,
@@ -33,6 +36,7 @@ export async function GET() {
         // =======================
         // CUSTOMER PAYMENT
         // =======================
+
         const cashIn = await prisma.customerPayment.aggregate({
             _sum: {
                 amount: true,
@@ -42,6 +46,7 @@ export async function GET() {
         // =======================
         // SUPPLIER PAYMENT
         // =======================
+
         const cashOut = await prisma.supplierPayment.aggregate({
             _sum: {
                 amount: true,
@@ -51,6 +56,7 @@ export async function GET() {
         // =======================
         // TOTAL PROFIT
         // =======================
+
         const saleItems = await prisma.saleItem.aggregate({
             _sum: {
                 profit: true,
@@ -60,6 +66,7 @@ export async function GET() {
         // =======================
         // CUSTOMER DUE
         // =======================
+
         const customerDue = await prisma.sale.aggregate({
             _sum: {
                 dueAmount: true,
@@ -69,6 +76,7 @@ export async function GET() {
         // =======================
         // SUPPLIER DUE
         // =======================
+
         const supplierDue = await prisma.purchase.aggregate({
             _sum: {
                 dueAmount: true,
@@ -76,8 +84,37 @@ export async function GET() {
         });
 
         // =======================
+        // TOTAL PRODUCTS
+        // =======================
+
+        const totalProducts = await prisma.product.count();
+
+        // =======================
+        // TOTAL CUSTOMERS
+        // =======================
+
+        const totalCustomers = await prisma.customer.count();
+
+        // =======================
+        // TOTAL SUPPLIERS
+        // =======================
+
+        const totalSuppliers = await prisma.supplier.count();
+
+        // =======================
+        // TOTAL STOCK
+        // =======================
+
+        const stock = await prisma.productBatch.aggregate({
+            _sum: {
+                quantityRemaining: true,
+            },
+        });
+
+        // =======================
         // LOW STOCK PRODUCTS
         // =======================
+
         const lowStock = await prisma.productBatch.findMany({
             where: {
                 quantityRemaining: {
@@ -95,6 +132,7 @@ export async function GET() {
         // =======================
         // RECENT SALES
         // =======================
+
         const recentSales = await prisma.sale.findMany({
             take: 5,
             orderBy: {
@@ -108,6 +146,7 @@ export async function GET() {
         // =======================
         // RECENT PURCHASES
         // =======================
+
         const recentPurchases = await prisma.purchase.findMany({
             take: 5,
             orderBy: {
@@ -119,23 +158,47 @@ export async function GET() {
         });
 
         return NextResponse.json({
-            // Summary
+            // =======================
+            // SUMMARY
+            // =======================
+
             totalSales: Number(sales._sum.totalAmount || 0),
             totalPurchase: Number(purchases._sum.totalAmount || 0),
             totalExpense: Number(expenses._sum.amount || 0),
 
-            // Cash Flow
+            // =======================
+            // CASH FLOW
+            // =======================
+
             totalCashIn: Number(cashIn._sum.amount || 0),
             totalCashOut: Number(cashOut._sum.amount || 0),
 
-            // Profit
+            // =======================
+            // PROFIT
+            // =======================
+
             totalProfit: Number(saleItems._sum.profit || 0),
 
-            // Due
+            // =======================
+            // DUE
+            // =======================
+
             totalCustomerDue: Number(customerDue._sum.dueAmount || 0),
             totalSupplierDue: Number(supplierDue._sum.dueAmount || 0),
 
-            // Lists
+            // =======================
+            // COUNTS
+            // =======================
+
+            totalProducts,
+            totalCustomers,
+            totalSuppliers,
+            totalStock: Number(stock._sum.quantityRemaining || 0),
+
+            // =======================
+            // LISTS
+            // =======================
+
             lowStock,
             recentSales,
             recentPurchases,
