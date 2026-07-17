@@ -1,8 +1,14 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import {
+    authorize,
+    handleAuthError,
+} from "@/middleware/auth";
 
-export async function GET() {
+
+export async function GET(request: Request) {
     try {
+        const user = await authorize(request, "dashboard");
         // =======================
         // SALES
         // =======================
@@ -203,16 +209,11 @@ export async function GET() {
             recentSales,
             recentPurchases,
         });
-    } catch (error) {
+    } catch (error: any) {
+
         console.error(error);
 
-        return NextResponse.json(
-            {
-                message: "Failed to fetch dashboard",
-            },
-            {
-                status: 500,
-            }
-        );
+        return handleAuthError(error);
+
     }
 }

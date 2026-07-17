@@ -128,3 +128,38 @@ export async function GET(request: NextRequest) {
 
             })),
         }));
+        return NextResponse.json({
+
+            summary: {
+                totalInvoices: sales.length,
+
+                totalSales,
+
+                totalDiscount,
+
+                totalPaid,
+
+                totalDue,
+
+                totalProfit,
+            },
+
+            report,
+
+        });
+
+    } catch (error: any) {
+
+        console.error(error);
+
+        return NextResponse.json(
+            {
+                message: "Failed to fetch sales report",
+                error: error.message,
+            },
+            {
+                status: 500,
+            }
+        );
+    }
+}
