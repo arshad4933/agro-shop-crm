@@ -163,6 +163,58 @@ export async function GET(request: Request) {
             },
         });
 
+        // ===============================
+        // SALES CHART
+        // ===============================
+
+        const salesChart = await prisma.sale.groupBy({
+            by: ["saleDate"],
+
+            _sum: {
+                totalAmount: true,
+            },
+
+            orderBy: {
+                saleDate: "asc",
+            },
+        });
+
+        // ===============================
+        // PURCHASE CHART
+        // ===============================
+
+        const purchaseChart =
+            await prisma.purchase.groupBy({
+
+                by: ["purchaseDate"],
+
+                _sum: {
+                    totalAmount: true,
+                },
+
+                orderBy: {
+                    purchaseDate: "asc",
+                },
+
+            });
+        // ===============================
+        // FORMAT CHART DATA
+        // ===============================
+
+        const formattedSalesChart = salesChart.map((item) => ({
+            month: item.saleDate.toLocaleDateString("en-US", {
+                month: "short",
+            }),
+            sales: Number(item._sum.totalAmount || 0),
+        }));
+
+        const formattedPurchaseChart = purchaseChart.map((item) => ({
+            month: item.purchaseDate.toLocaleDateString("en-US", {
+                month: "short",
+            }),
+            purchase: Number(item._sum.totalAmount || 0),
+        }));
+
         return NextResponse.json({
             // =======================
             // SUMMARY
@@ -208,6 +260,10 @@ export async function GET(request: Request) {
             lowStock,
             recentSales,
             recentPurchases,
+            salesChart: formattedSalesChart,
+
+            purchaseChart: formattedPurchaseChart,
+
         });
     } catch (error: any) {
 
