@@ -99,10 +99,12 @@ export async function PUT(
       },
       data: {
         name: body.name.trim(),
+        description: body.description || null,
         brand: body.brand || null,
         unit: body.unit,
         categoryId: Number(body.categoryId),
         minimumStock: Number(body.minimumStock || 0),
+        isActive: body.isActive,
       },
     });
 

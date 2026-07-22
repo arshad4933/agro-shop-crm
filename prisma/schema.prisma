@@ -25,9 +25,11 @@ model Product {
   categoryId Int
   category   Category @relation(fields: [categoryId], references: [id])
 
-  name  String  @unique
+name  String  @unique
+description String?
   brand String?
   unit  String
+
 
   minimumStock Int @default(0)
 

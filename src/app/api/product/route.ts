@@ -69,6 +69,7 @@ export async function POST(request: Request) {
     // Create Product
     const product = await prisma.product.create({
       data: {
+        description: body.description || null,
         name: body.name.trim(),
         brand: body.brand || null,
         unit: body.unit,
@@ -84,9 +85,11 @@ export async function POST(request: Request) {
     console.error("POST PRODUCT ERROR:");
     console.error(error);
 
+    console.error(error);
+
     return NextResponse.json(
       {
-        error: String(error),
+        message: String(error),
       },
       {
         status: 500,

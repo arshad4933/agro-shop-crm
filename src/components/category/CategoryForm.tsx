@@ -3,15 +3,30 @@
 import { useState } from "react";
 
 type CategoryFormProps = {
-    onSubmit: (data: {
+
+    initialData?: {
+
         name: string;
+
         description: string;
+
+    };
+
+    onSubmit: (data: {
+
+        name: string;
+
+        description: string;
+
     }) => Promise<void>;
 
     loading?: boolean;
+
 };
 
 export default function CategoryForm({
+
+    initialData,
 
     onSubmit,
 
@@ -19,9 +34,13 @@ export default function CategoryForm({
 
 }: CategoryFormProps) {
 
-    const [name, setName] = useState("");
+    const [name, setName] = useState(
+        initialData?.name ?? ""
+    );
 
-    const [description, setDescription] = useState("");
+    const [description, setDescription] = useState(
+        initialData?.description ?? ""
+    );
 
     async function handleSubmit(
         e: React.FormEvent<HTMLFormElement>

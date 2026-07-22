@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import axios from "axios";
+import toast from "react-hot-toast";
+import CategorySkeleton from "@/components/category/CategorySkeleton";
 
 import CategoryHeader from "@/components/category/CategoryHeader";
 import CategoryModal from "@/components/category/CategoryModal";
@@ -14,7 +16,7 @@ import CategorySearch from "@/components/category/CategorySearch";
 export default function CategoryPage() {
 
     const [open, setOpen] = useState(false);
-    const [loading, setLoading] = useState(false);
+    const [loading, setLoading] = useState(true);
 
     const [categories, setCategories] = useState<
 
@@ -25,6 +27,11 @@ export default function CategoryPage() {
         }[]
     >([]);
     const [search, setSearch] = useState("");
+    const [editingCategory, setEditingCategory] = useState<{
+        id: number;
+        name: string;
+        description: string | null;
+    } | null>(null);
 
     async function createCategory(data: {
         name: string;
@@ -48,11 +55,13 @@ export default function CategoryPage() {
 
             await loadCategories();
 
+            toast.success("Category created successfully");
+
             setOpen(false);
 
         } catch (error: any) {
 
-            alert(
+            toast.error(
                 error?.response?.data?.message ??
                 "Failed to create category"
             );
@@ -64,8 +73,16 @@ export default function CategoryPage() {
         }
 
     }
-    async function loadCategories() {
 
+
+
+
+
+
+
+
+    async function loadCategories() {
+        setLoading(true);
         try {
 
             const response = await axios.get(
@@ -85,8 +102,115 @@ export default function CategoryPage() {
             console.error(error);
 
         }
+        finally {
+
+            setLoading(false);
+
+        }
 
     }
+
+
+
+
+
+
+    async function updateCategory(
+        data: {
+            name: string;
+            description: string;
+        }
+    ) {
+
+        if (!editingCategory) return;
+
+        try {
+
+            setLoading(true);
+
+            await axios.put(
+
+                `/api/category/${editingCategory.id}`,
+
+                data,
+
+                {
+                    headers: {
+                        Authorization:
+                            `Bearer ${localStorage.getItem("token")}`,
+                    },
+                }
+
+            );
+
+            await loadCategories();
+
+            setEditingCategory(null);
+
+            setOpen(false);
+
+
+            toast.success("Category updated successfully");
+
+        } catch (error: any) {
+
+            toast.error(
+                error?.response?.data?.message ??
+                "Failed to update category"
+            );
+
+        } finally {
+
+            setLoading(false);
+
+        }
+
+    }
+
+
+
+    async function deleteCategory(category: {
+        id: number;
+        name: string;
+    }) {
+
+        const ok = confirm(
+            `Delete "${category.name}" ?`
+        );
+
+        if (!ok) return;
+
+        try {
+
+            await axios.delete(
+
+                `/api/category/${category.id}`,
+
+                {
+                    headers: {
+                        Authorization:
+                            `Bearer ${localStorage.getItem("token")}`,
+                    },
+                }
+
+            );
+
+            await loadCategories();
+
+            toast.success("Category deleted successfully");
+
+        } catch (error: any) {
+
+            toast.error(
+                error?.response?.data?.message ??
+                "Failed to delete category"
+            );
+
+        }
+
+    }
+
+
     useEffect(() => {
 
         loadCategories();
@@ -118,13 +242,45 @@ export default function CategoryPage() {
 
             <CategoryModal
                 open={open}
-                title="Add Category"
+                title={
+                    editingCategory
+                        ? "Edit Category"
+                        : "Add Category"
+                }
                 onClose={() => setOpen(false)}
             >
 
                 <CategoryForm
+
+                    initialData={
+
+                        editingCategory
+
+                            ? {
+
+                                name: editingCategory.name,
+
+                                description:
+                                    editingCategory.description ?? "",
+
+                            }
+
+                            : undefined
+
+                    }
+
                     loading={loading}
-                    onSubmit={createCategory}
+
+                    onSubmit={
+
+                        editingCategory
+
+                            ? updateCategory
+
+                            : createCategory
+
+                    }
+
                 />
 
             </CategoryModal>
@@ -135,9 +291,45 @@ export default function CategoryPage() {
                     value={search}
                     onChange={setSearch}
                 />
-                <CategoryTable
-                    categories={filteredCategories}
-                />
+
+
+
+                {
+                    loading ? (
+
+                        <CategorySkeleton />
+
+                    ) : (
+
+                        <CategoryTable
+
+                            categories={filteredCategories}
+
+                            onEdit={(category) => {
+
+                                setEditingCategory(category);
+
+                                setOpen(true);
+
+                            }}
+
+                            onDelete={deleteCategory}
+
+                            onAddCategory={() => {
+
+                                setEditingCategory(null);
+
+                                setOpen(true);
+
+                            }}
+
+                        />
+
+                    )
+                }
+
+
+
 
             </div>
         </div>
