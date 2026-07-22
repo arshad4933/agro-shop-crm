@@ -7,16 +7,13 @@ import { prisma } from "@/lib/prisma";
 export async function GET() {
   try {
     const suppliers = await prisma.supplier.findMany({
-      where: {
-        isActive: true,
-      },
+
       orderBy: {
-        name: "asc",
+
+        id: "desc",
+
       },
-      select: {
-        id: true,
-        name: true,
-      },
+
     });
 
     return NextResponse.json(suppliers);
