@@ -8,7 +8,7 @@ import {
 
 export async function GET(request: Request) {
     try {
-        const user = await authorize(request, "dashboard");
+        //const user = await authorize(request, "dashboard");
         // =======================
         // SALES
         // =======================

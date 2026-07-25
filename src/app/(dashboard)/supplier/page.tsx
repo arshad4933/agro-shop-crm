@@ -24,16 +24,35 @@ export default function SupplierPage() {
 
             setLoading(true);
 
-            await axios.post(
+            if (selectedSupplier) {
 
-                "/api/supplier",
+                await axios.put(
 
-                data
+                    `/api/supplier/${selectedSupplier.id}`,
 
-            );
+                    data
 
-            toast.success("Supplier added successfully");
+                );
+
+                toast.success("Supplier updated successfully");
+
+            } else {
+
+                await axios.post(
+
+                    "/api/supplier",
+
+                    data
+
+                );
+
+                toast.success("Supplier added successfully");
+
+            }
+
             await loadSuppliers();
+
+            setSelectedSupplier(null);
 
             setOpen(false);
 
@@ -43,7 +62,7 @@ export default function SupplierPage() {
 
                 error?.response?.data?.message ??
 
-                "Failed to create supplier"
+                "Failed to save supplier"
 
             );
 
@@ -56,7 +75,41 @@ export default function SupplierPage() {
     }
 
 
+    async function deleteSupplier(supplier: any) {
 
+        const ok = window.confirm(
+
+            `Delete "${supplier.name}" ?`
+
+        );
+
+        if (!ok) return;
+
+        try {
+
+            await axios.delete(
+
+                `/api/supplier/${supplier.id}`
+
+            );
+
+            toast.success("Supplier deleted successfully");
+
+            await loadSuppliers();
+
+        } catch (error: any) {
+
+            toast.error(
+
+                error?.response?.data?.message ??
+
+                "Failed to delete supplier"
+
+            );
+
+        }
+
+    }
 
 
     async function loadSuppliers() {
@@ -137,6 +190,7 @@ export default function SupplierPage() {
                     setOpen(true);
 
                 }}
+                onDelete={deleteSupplier}
             />
 
             {open && (

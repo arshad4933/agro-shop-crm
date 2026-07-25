@@ -5,39 +5,52 @@ import { prisma } from "@/lib/prisma";
 // GET ALL PURCHASES
 // =======================
 export async function GET() {
+
   try {
+
     const purchases = await prisma.purchase.findMany({
+
       include: {
+
         supplier: true,
-        items: {
-          include: {
-            batch: {
-              include: {
-                product: true,
-              },
-            },
-          },
-        },
+
       },
+
       orderBy: {
+
         id: "desc",
+
       },
+
     });
 
     return NextResponse.json(purchases);
+
   } catch (error) {
+
     console.error(error);
 
     return NextResponse.json(
+
       {
+
         message: "Failed to fetch purchases",
+
       },
+
       {
+
         status: 500,
+
       }
+
     );
+
   }
+
 }
+
+
 
 // =======================
 // CREATE PURCHASE
@@ -46,79 +59,88 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
 
-    const {
-      supplierId,
-      purchaseNo,
-      purchaseDate,
-      paidAmount,
-      note,
-      items,
-    } = body;
-
-    if (
-      !supplierId ||
-      !purchaseNo ||
-      !items ||
-      items.length === 0
-    ) {
+    // =======================
+    // VALIDATION
+    // =======================
+    if (!body.supplierId) {
       return NextResponse.json(
-        {
-          message: "Supplier, Purchase No and Items are required",
-        },
-        {
-          status: 400,
-        }
+        { message: "Supplier is required" },
+        { status: 400 }
       );
     }
 
-    const result = await prisma.$transaction(async (tx) => {
-      let totalAmount = 0;
+    if (!body.items || body.items.length === 0) {
+      return NextResponse.json(
+        { message: "At least one product is required" },
+        { status: 400 }
+      );
+    }
 
-      // Calculate total
-      for (const item of items) {
-        totalAmount +=
-          Number(item.quantity) *
-          Number(item.buyPrice);
+    for (const item of body.items) {
+      if (!item.productId) {
+        return NextResponse.json(
+          { message: "Please select a product" },
+          { status: 400 }
+        );
       }
 
-      const paid = Number(paidAmount || 0);
-      const dueAmount = totalAmount - paid;
+      if (item.quantity <= 0) {
+        return NextResponse.json(
+          { message: "Quantity must be greater than zero" },
+          { status: 400 }
+        );
+      }
 
-      // Create Purchase
+      if (item.buyPrice < 0) {
+        return NextResponse.json(
+          { message: "Invalid buy price" },
+          { status: 400 }
+        );
+      }
+    }
+
+    // =======================
+    // PURCHASE NUMBER
+    // =======================
+    const lastPurchase = await prisma.purchase.findFirst({
+      orderBy: {
+        id: "desc",
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    const purchaseNo = `PUR-${String(
+      (lastPurchase?.id ?? 0) + 1
+    ).padStart(6, "0")}`;
+
+    // =======================
+    // TRANSACTION
+    // =======================
+    const purchase = await prisma.$transaction(async (tx) => {
       const purchase = await tx.purchase.create({
         data: {
-          supplierId: Number(supplierId),
           purchaseNo,
-          purchaseDate: new Date(purchaseDate),
-          totalAmount,
-          paidAmount: paid,
-          dueAmount,
-          note,
+          supplierId: Number(body.supplierId),
+          purchaseDate: new Date(body.purchaseDate),
+          totalAmount: body.totalAmount,
+          paidAmount: body.paidAmount,
+          dueAmount: body.dueAmount,
+          note: body.note || null,
         },
       });
 
-      // Create Items + Batch
-      for (const item of items) {
+      for (const item of body.items) {
         const batch = await tx.productBatch.create({
           data: {
             productId: Number(item.productId),
-            supplierId: Number(supplierId),
-
+            supplierId: Number(body.supplierId),
             purchasePrice: item.buyPrice,
-            sellingPrice: item.sellPrice,
-
-            quantityPurchased: Number(item.quantity),
-            quantityRemaining: Number(item.quantity),
-
-            manufactureDate: item.manufactureDate
-              ? new Date(item.manufactureDate)
-              : null,
-
-            expiryDate: item.expiryDate
-              ? new Date(item.expiryDate)
-              : null,
-
-            purchaseDate: new Date(purchaseDate),
+            sellingPrice: 0,
+            quantityPurchased: item.quantity,
+            quantityRemaining: item.quantity,
+            purchaseDate: new Date(body.purchaseDate),
           },
         });
 
@@ -126,14 +148,9 @@ export async function POST(request: Request) {
           data: {
             purchaseId: purchase.id,
             batchId: batch.id,
-
-            quantity: Number(item.quantity),
-
+            quantity: item.quantity,
             buyPrice: item.buyPrice,
-
-            totalPrice:
-              Number(item.quantity) *
-              Number(item.buyPrice),
+            totalPrice: item.total,
           },
         });
       }
@@ -141,18 +158,17 @@ export async function POST(request: Request) {
       return purchase;
     });
 
-    return NextResponse.json(result, {
-      status: 201,
+    return NextResponse.json({
+      message: "Purchase Created",
+      purchase,
     });
 
-  } catch (error: unknown) {
-    console.error("========== PURCHASE ERROR ==========");
+  } catch (error) {
     console.error(error);
 
     return NextResponse.json(
       {
         message: "Failed to create purchase",
-        error: error instanceof Error ? error.message : String(error),
       },
       {
         status: 500,

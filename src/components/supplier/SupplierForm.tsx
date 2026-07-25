@@ -1,16 +1,86 @@
 "use client";
+import { useEffect, useState } from "react";
+
 
 type SupplierFormProps = {
     loading: boolean;
+    initialData?: any;
     onSubmit: (data: any) => void;
     onCancel: () => void;
 };
-
 export default function SupplierForm({
     loading,
+    initialData,
     onSubmit,
     onCancel,
 }: SupplierFormProps) {
+
+
+
+
+    const [form, setForm] = useState({
+
+        name: "",
+
+        company: "",
+
+        phone: "",
+
+        email: "",
+
+        address: "",
+
+        openingDue: 0,
+
+        isActive: true,
+
+    });
+
+    useEffect(() => {
+
+        if (initialData) {
+
+            setForm({
+
+                name: initialData.name || "",
+
+                company: initialData.company || "",
+
+                phone: initialData.phone || "",
+
+                email: initialData.email || "",
+
+                address: initialData.address || "",
+
+                openingDue: Number(initialData.openingDue || 0),
+
+                isActive: initialData.isActive ?? true,
+
+            });
+
+        } else {
+
+            setForm({
+
+                name: "",
+
+                company: "",
+
+                phone: "",
+
+                email: "",
+
+                address: "",
+
+                openingDue: 0,
+
+                isActive: true,
+
+            });
+
+        }
+
+    }, [initialData]);
 
     function handleSubmit(
         e: React.FormEvent<HTMLFormElement>
@@ -18,25 +88,7 @@ export default function SupplierForm({
 
         e.preventDefault();
 
-        const formData = new FormData(e.currentTarget);
-
-        onSubmit({
-
-            name: formData.get("name"),
-
-            company: formData.get("company"),
-
-            phone: formData.get("phone"),
-
-            email: formData.get("email"),
-
-            address: formData.get("address"),
-
-            openingDue: Number(formData.get("openingDue") || 0),
-
-            isActive: formData.get("isActive") === "on",
-
-        });
+        onSubmit(form);
 
     }
 
@@ -70,6 +122,10 @@ export default function SupplierForm({
                         <input
                             name="name"
                             required
+                            value={form.name}
+                            onChange={(e) =>
+                                setForm({ ...form, name: e.target.value })
+                            }
                             placeholder="Rahim Traders"
                             className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 outline-none focus:border-green-600"
                         />
@@ -86,6 +142,10 @@ export default function SupplierForm({
 
                         <input
                             name="company"
+                            value={form.company}
+                            onChange={(e) =>
+                                setForm({ ...form, company: e.target.value })
+                            }
                             placeholder="ACI Limited"
                             className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 outline-none focus:border-green-600"
                         />
@@ -103,6 +163,10 @@ export default function SupplierForm({
                         <input
                             name="phone"
                             required
+                            value={form.phone}
+                            onChange={(e) =>
+                                setForm({ ...form, phone: e.target.value })
+                            }
                             placeholder="01XXXXXXXXX"
                             className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 outline-none focus:border-green-600"
                         />
@@ -120,6 +184,10 @@ export default function SupplierForm({
                         <input
                             type="email"
                             name="email"
+                            value={form.email}
+                            onChange={(e) =>
+                                setForm({ ...form, email: e.target.value })
+                            }
                             placeholder="supplier@email.com"
                             className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 outline-none focus:border-green-600"
                         />
@@ -153,6 +221,10 @@ export default function SupplierForm({
                         <textarea
                             name="address"
                             rows={4}
+                            value={form.address}
+                            onChange={(e) =>
+                                setForm({ ...form, address: e.target.value })
+                            }
                             placeholder="Supplier address..."
                             className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 outline-none transition focus:border-green-600"
                         />
@@ -172,7 +244,13 @@ export default function SupplierForm({
                             <input
                                 type="number"
                                 name="openingDue"
-                                defaultValue={0}
+                                value={form.openingDue}
+                                onChange={(e) =>
+                                    setForm({
+                                        ...form,
+                                        openingDue: Number(e.target.value),
+                                    })
+                                }
                                 className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 outline-none transition focus:border-green-600"
                             />
 
@@ -191,7 +269,13 @@ export default function SupplierForm({
                                 <input
                                     type="checkbox"
                                     name="isActive"
-                                    defaultChecked
+                                    checked={form.isActive}
+                                    onChange={(e) =>
+                                        setForm({
+                                            ...form,
+                                            isActive: e.target.checked,
+                                        })
+                                    }
                                 />
 
                                 Active Supplier

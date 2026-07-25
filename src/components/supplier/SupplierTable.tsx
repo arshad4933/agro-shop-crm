@@ -7,14 +7,17 @@ type Supplier = {
     isActive: boolean;
 };
 
+
 type SupplierTableProps = {
     suppliers: Supplier[];
     onEdit: (supplier: Supplier) => void;
+    onDelete: (supplier: Supplier) => void;
 };
 
 export default function SupplierTable({
     suppliers,
     onEdit,
+    onDelete,
 }: SupplierTableProps) {
 
     return (
@@ -92,6 +95,7 @@ export default function SupplierTable({
                                 </button>
 
                                 <button
+                                    onClick={() => onDelete(supplier)}
                                     className="text-xl"
                                 >
                                     🗑️
