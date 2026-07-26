@@ -152,6 +152,44 @@ export default function PurchasePage() {
 
     }
 
+    async function deletePurchase(id: number) {
+
+        const ok = confirm(
+            "Are you sure you want to delete this purchase?"
+        );
+
+        if (!ok) return;
+
+        try {
+
+            setLoading(true);
+
+            const response = await axios.delete(
+                `/api/purchase/${id}`
+            );
+
+            toast.success(response.data.message);
+
+            await loadPurchases();
+
+        } catch (error: any) {
+
+            toast.error(
+
+                error?.response?.data?.message ??
+
+                "Failed to delete purchase"
+
+            );
+
+        } finally {
+
+            setLoading(false);
+
+        }
+
+    }
+
 
     return (
 
@@ -257,12 +295,23 @@ export default function PurchasePage() {
                                     </td>
 
                                     <td className="px-5 py-4">
-                                        <button
-                                            onClick={() => editPurchase(purchase.id)}
-                                            className="rounded-lg bg-yellow-500 px-3 py-2 text-sm font-semibold text-white hover:bg-yellow-600"
-                                        >
-                                            Edit
-                                        </button>
+                                        <div className="flex gap-2">
+
+                                            <button
+                                                onClick={() => editPurchase(purchase.id)}
+                                                className="rounded-lg bg-yellow-500 px-3 py-2 text-sm font-semibold text-white hover:bg-yellow-600"
+                                            >
+                                                Edit
+                                            </button>
+
+                                            <button
+                                                onClick={() => deletePurchase(purchase.id)}
+                                                className="rounded-lg bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-700"
+                                            >
+                                                Delete
+                                            </button>
+
+                                        </div>
                                     </td>
 
                                 </tr>

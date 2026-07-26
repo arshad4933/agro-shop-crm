@@ -15,10 +15,61 @@ export async function GET(
       where: {
         id: Number(id),
       },
+
       include: {
-        sales: true,
-        payments: true,
+
+        sales: {
+
+          orderBy: {
+            saleDate: "desc",
+          },
+
+          include: {
+
+            items: {
+
+              include: {
+
+                batch: {
+
+                  include: {
+
+                    product: {
+                      include: {
+                        category: true,
+                      },
+                    },
+
+                  },
+
+                },
+
+              },
+
+            },
+
+            payments: {
+
+              orderBy: {
+                paymentDate: "desc",
+              },
+
+            },
+
+          },
+
+        },
+
+        payments: {
+
+          orderBy: {
+            paymentDate: "desc",
+          },
+
+        },
+
       },
+
     });
 
     if (!customer) {

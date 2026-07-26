@@ -134,14 +134,24 @@ export async function POST(request: Request) {
       for (const item of body.items) {
         const batch = await tx.productBatch.create({
           data: {
+
+            purchaseId: purchase.id,
+
             productId: Number(item.productId),
+
             supplierId: Number(body.supplierId),
+
             purchasePrice: item.buyPrice,
+
             sellingPrice: 0,
+
             quantityPurchased: item.quantity,
+
             quantityRemaining: item.quantity,
+
             purchaseDate: new Date(body.purchaseDate),
-          },
+
+          }
         });
 
         await tx.purchaseItem.create({
