@@ -102,7 +102,13 @@ export default function SaleForm({
 
     }
     function addItem() {
+        if (Number(quantity) <= 0) {
 
+            toast.error("Quantity must be greater than 0");
+
+            return;
+
+        }
         if (
 
             !selectedProduct ||
@@ -136,7 +142,33 @@ export default function SaleForm({
             (b) => b.id === Number(selectedBatch)
 
         );
+        if (Number(quantity) > Number(batch.quantityRemaining)) {
 
+            toast.error(
+
+                `Only ${batch.quantityRemaining} items available in stock`
+
+            );
+
+            return;
+
+        }
+
+        if (Number(sellingPrice) < Number(buyPrice)) {
+
+            toast(
+
+                "Warning: Selling below Buy Price",
+
+                {
+
+                    icon: "⚠️",
+
+                }
+
+            );
+
+        }
         const item = {
 
             productId: Number(selectedProduct),
@@ -192,6 +224,111 @@ export default function SaleForm({
 
     }
 
+
+    async function saveSale() {
+
+        try {
+
+            if (!selectedCustomer) {
+
+                toast.error("Select Customer");
+
+                return;
+
+            }
+
+            if (items.length === 0) {
+
+                toast.error("Add at least one item");
+
+                return;
+
+            }
+
+            //setLoading(true);
+
+            await axios.post(
+
+                "/api/sale",
+
+                {
+
+                    customerId: Number(selectedCustomer),
+
+                    items,
+
+                    discount: Number(discount || 0),
+
+                    paidAmount: Number(paidAmount || 0),
+
+                }
+
+            );
+
+            toast.success("Sale completed successfully");
+
+            setSelectedCustomer("");
+
+            setItems([]);
+
+            setDiscount("");
+
+            setPaidAmount("");
+
+            setSelectedProduct("");
+
+            setSelectedBatch("");
+
+            setBuyPrice("");
+
+            setSellingPrice("");
+
+            setQuantity("");
+
+            setBatches([]);
+
+        } catch (error: any) {
+
+            toast.error(
+
+                error?.response?.data?.message ??
+
+                "Failed to save sale"
+
+            );
+
+        } finally {
+
+            // setLoading(false);
+
+        }
+
+    }
+
+    const grandTotal = items.reduce(
+
+        (sum, item) => sum + item.total,
+
+        0
+
+    );
+
+    const [discount, setDiscount] = useState("");
+
+    const [paidAmount, setPaidAmount] = useState("");
+
+    const finalTotal =
+
+        grandTotal -
+
+        Number(discount || 0);
+
+    const dueAmount =
+
+        finalTotal -
+
+        Number(paidAmount || 0);
+
     useEffect(() => {
 
         loadCustomers();
@@ -199,6 +336,9 @@ export default function SaleForm({
         loadProducts();
 
     }, []);
+
+
+
     return (
 
         <div className="space-y-6">
@@ -608,7 +748,114 @@ export default function SaleForm({
 
                 </div>
 
+
+
             )}
+
+            <div className="mt-6 flex justify-end">
+
+                <div className="w-96 rounded-xl border bg-slate-50 p-5 space-y-4">
+
+                    <div className="flex justify-between">
+
+                        <span>Grand Total</span>
+
+                        <span className="font-bold">
+
+                            ৳ {grandTotal}
+
+                        </span>
+
+                    </div>
+
+                    <div>
+
+                        <label className="mb-1 block text-sm">
+
+                            Discount
+
+                        </label>
+
+                        <input
+
+                            type="number"
+
+                            value={discount}
+
+                            onChange={(e) =>
+
+                                setDiscount(e.target.value)
+
+                            }
+
+                            className="w-full rounded-lg border px-3 py-2"
+
+                        />
+
+                    </div>
+
+                    <div className="flex justify-between">
+
+                        <span className="font-semibold">
+
+                            Final Total
+
+                        </span>
+
+                        <span className="font-bold text-green-700">
+
+                            ৳ {finalTotal}
+
+                        </span>
+
+                    </div>
+
+                    <div>
+
+                        <label className="mb-1 block text-sm">
+
+                            Paid Amount
+
+                        </label>
+
+                        <input
+
+                            type="number"
+
+                            value={paidAmount}
+
+                            onChange={(e) =>
+
+                                setPaidAmount(e.target.value)
+
+                            }
+
+                            className="w-full rounded-lg border px-3 py-2"
+
+                        />
+
+                    </div>
+
+                    <div className="flex justify-between">
+
+                        <span className="font-semibold">
+
+                            Due Amount
+
+                        </span>
+
+                        <span className="font-bold text-red-600">
+
+                            ৳ {dueAmount}
+
+                        </span>
+
+                    </div>
+
+                </div>
+
+            </div>
+
 
             <div className="flex gap-3">
 
@@ -629,7 +876,7 @@ export default function SaleForm({
                 <button
 
                     type="button"
-
+                    onClick={saveSale}
                     disabled={loading}
 
                     className="rounded-lg bg-green-600 px-5 py-3 text-white"

@@ -1,5 +1,5 @@
 "use client";
-
+import CustomerView from "@/components/customer/CustomerView";
 import { useEffect, useState } from "react";
 import axios from "axios";
 import { toast } from "react-hot-toast";
@@ -20,6 +20,7 @@ export default function CustomerPage() {
 
     const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
 
+    const [viewCustomer, setViewCustomer] = useState<any>(null);
     async function loadCustomers() {
 
         try {
@@ -186,6 +187,11 @@ export default function CustomerPage() {
 
             <CustomerTable
                 customers={filteredCustomers}
+
+                onView={(customer) => {
+                    setViewCustomer(customer);
+                }}
+
                 onEdit={(customer) => {
 
                     setSelectedCustomer(customer);
@@ -193,9 +199,9 @@ export default function CustomerPage() {
                     setOpen(true);
 
                 }}
+
                 onDelete={deleteCustomer}
             />
-
             {open && (
 
                 <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/50 p-6">
@@ -263,6 +269,19 @@ export default function CustomerPage() {
                 </div>
 
             )}
+
+            {viewCustomer && (
+
+                <CustomerView
+
+                    customer={viewCustomer}
+
+                    onClose={() => setViewCustomer(null)}
+
+                />
+
+            )}
+
 
         </div>
 

@@ -76,7 +76,13 @@ export default function Sidebar() {
                     <Receipt size={20} />
                     Sale
                 </Link>
-
+                <Link
+                    href="/customer-payment"
+                    className="flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-green-600"
+                >
+                    <Receipt size={20} />
+                    Customer Payment
+                </Link>
                 <Link
                     href="/reports"
                     className="flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-green-600"

@@ -4,10 +4,12 @@ interface Props {
     customers: any[];
     onEdit: (customer: any) => void;
     onDelete: (customer: any) => void;
+    onView: (customer: any) => void;
 }
 
 export default function CustomerTable({
     customers,
+    onView,
     onEdit,
     onDelete,
 }: Props) {
@@ -103,7 +105,12 @@ export default function CustomerTable({
                                         <td className="px-5 py-4">
 
                                             <div className="flex justify-center gap-2">
-
+                                                <button
+                                                    onClick={() => onView(customer)}
+                                                    className="rounded bg-green-600 px-3 py-1 text-sm text-white"
+                                                >
+                                                    View
+                                                </button>
                                                 <button
                                                     onClick={() => onEdit(customer)}
                                                     className="rounded-lg bg-yellow-500 px-3 py-2 text-sm font-semibold text-white hover:bg-yellow-600"
