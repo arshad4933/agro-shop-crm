@@ -40,7 +40,7 @@ export async function GET(
             },
         });
 
-        const payments = await prisma.customerPayment.findMany({
+        const payments = await prisma.salePayment.findMany({
             where: {
                 customerId,
             },
@@ -48,7 +48,7 @@ export async function GET(
                 sale: true,
             },
             orderBy: {
-                paymentDate: "desc",
+                paymentDate: "asc",
             },
         });
 
@@ -70,78 +70,75 @@ export async function GET(
             (sale: any) => Number(sale.dueAmount) > 0
         );
 
+        // =======================
+        // LEDGER
+        // =======================
+
         const ledger: any[] = [];
 
+        // Sale Entry
+        sales.forEach((sale: any) => {
+
+            ledger.push({
+                id: `sale-${sale.id}`,
+                date: sale.saleDate,
+                sortOrder: 1,
+                particular: `Sale (${sale.invoiceNo})`,
+                debit: Number(sale.totalAmount),
+                credit: 0,
+            });
+
+        });
+
+        // Payment Entry (Sale + Due)
+        payments.forEach((payment: any) => {
+
+            ledger.push({
+                id: `payment-${payment.id}`,
+                date: payment.paymentDate,
+                sortOrder:
+                    payment.paymentType === "SALE"
+                        ? 2
+                        : 3,
+
+                particular:
+                    payment.paymentType === "SALE"
+                        ? `Cash Received (${payment.sale?.invoiceNo})`
+                        : `Due Payment (${payment.sale?.invoiceNo})`,
+
+                debit: 0,
+                credit: Number(payment.amount),
+            });
+
+        });
+
+        // Sort
+        ledger.sort((a, b) => {
+
+            const dateDiff =
+                new Date(a.date).getTime() -
+                new Date(b.date).getTime();
+
+            if (dateDiff !== 0) {
+                return dateDiff;
+            }
+
+            return a.sortOrder - b.sortOrder;
+
+        });
+
+        // Running Balance
         let runningBalance = 0;
 
-        // সব Sale Entry
-        sales
-            .sort(
-                (a, b) =>
-                    new Date(a.saleDate).getTime() -
-                    new Date(b.saleDate).getTime()
-            )
-            .forEach((sale: any) => {
+        ledger.forEach((entry) => {
 
-                // Sale (Debit)
-                runningBalance += Number(sale.totalAmount);
+            runningBalance += Number(entry.debit);
 
-                ledger.push({
-                    id: `sale-${sale.id}`,
-                    date: sale.saleDate,
-                    particular: `Sale (${sale.invoiceNo})`,
-                    debit: Number(sale.totalAmount),
-                    credit: 0,
-                    balance: runningBalance,
-                });
+            runningBalance -= Number(entry.credit);
 
-                // Invoice-এর সময় Cash Received
-                if (Number(sale.paidAmount) > 0) {
+            entry.balance = runningBalance;
 
-                    runningBalance -= Number(sale.paidAmount);
-
-                    ledger.push({
-                        id: `sale-paid-${sale.id}`,
-                        date: sale.saleDate,
-                        particular: `Cash Received (${sale.invoiceNo})`,
-                        debit: 0,
-                        credit: Number(sale.paidAmount),
-                        balance: runningBalance,
-                    });
-
-                }
-
-            });
-
-        // সব Due Payment Entry
-        payments
-            .sort(
-                (a, b) =>
-                    new Date(a.paymentDate).getTime() -
-                    new Date(b.paymentDate).getTime()
-            )
-            .forEach((payment: any) => {
-
-                runningBalance -= Number(payment.amount);
-
-                ledger.push({
-                    id: `payment-${payment.id}`,
-                    date: payment.paymentDate,
-                    particular: `Due Payment (${payment.sale?.invoiceNo})`,
-                    debit: 0,
-                    credit: Number(payment.amount),
-                    balance: runningBalance,
-                });
-
-            });
-
-        // Final Sort
-        ledger.sort(
-            (a, b) =>
-                new Date(a.date).getTime() -
-                new Date(b.date).getTime()
-        );
-
+        });
         return NextResponse.json({
             customer,
 

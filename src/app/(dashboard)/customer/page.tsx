@@ -4,6 +4,14 @@ import { useEffect, useState } from "react";
 import axios from "axios";
 import { toast } from "react-hot-toast";
 
+
+import CustomerStatementPrint from "@/components/customer/CustomerStatementPrint";
+import { useReactToPrint } from "react-to-print";
+import { useRef } from "react";
+
+
+
+
 import CustomerHeader from "@/components/customer/CustomerHeader";
 import CustomerForm from "@/components/customer/CustomerForm";
 import CustomerTable from "@/components/customer/CustomerTable";
@@ -21,6 +29,16 @@ export default function CustomerPage() {
     const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
 
     const [viewCustomer, setViewCustomer] = useState<any>(null);
+
+    const [customerDetails, setCustomerDetails] = useState<any>(null);
+
+    const statementRef = useRef<HTMLDivElement>(null);
+
+    const handleStatementPrint = useReactToPrint({
+        contentRef: statementRef,
+        documentTitle: `${viewCustomer?.name}-Statement`,
+    });
+
     async function loadCustomers() {
 
         try {
@@ -188,8 +206,24 @@ export default function CustomerPage() {
             <CustomerTable
                 customers={filteredCustomers}
 
-                onView={(customer) => {
-                    setViewCustomer(customer);
+                onView={async (customer) => {
+
+                    try {
+
+                        const response = await axios.get(
+                            `/api/customer/${customer.id}/details`
+                        );
+
+                        setCustomerDetails(response.data);
+
+                        setViewCustomer(customer);
+
+                    } catch (error) {
+
+                        toast.error("Failed to load customer details");
+
+                    }
+
                 }}
 
                 onEdit={(customer) => {
@@ -273,16 +307,33 @@ export default function CustomerPage() {
             {viewCustomer && (
 
                 <CustomerView
-
                     customer={viewCustomer}
-
-                    onClose={() => setViewCustomer(null)}
-
+                    details={customerDetails}
+                    onPrint={handleStatementPrint}
+                    onClose={() => {
+                        setViewCustomer(null);
+                        setCustomerDetails(null);
+                    }}
                 />
 
             )}
 
+            <div className="hidden">
 
+                <div ref={statementRef}>
+
+                    {viewCustomer && customerDetails && (
+
+                        <CustomerStatementPrint
+                            customer={viewCustomer}
+                            details={customerDetails}
+                        />
+
+                    )}
+
+                </div>
+
+            </div>
         </div>
 
     );

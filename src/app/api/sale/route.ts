@@ -273,6 +273,23 @@ export async function POST(request: Request) {
         });
 
         // ===========================
+        // Create Initial Payment Entry
+        // ===========================
+
+        if (paid > 0) {
+          await tx.salePayment.create({
+            data: {
+              saleId: sale.id,
+              customerId: Number(customerId),
+              amount: paid,
+              paymentMethod: "Cash",
+              paymentType: "SALE",
+              note: "Cash Received During Sale",
+            },
+          });
+        }
+
+        // ===========================
         // Create Sale Items
         // ===========================
 
@@ -357,3 +374,4 @@ export async function POST(request: Request) {
   }
 
 }
+

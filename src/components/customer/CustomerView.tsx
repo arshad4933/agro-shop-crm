@@ -7,15 +7,19 @@ import { toast } from "react-hot-toast";
 
 interface Props {
     customer: any;
+    details: any;
     onClose: () => void;
+    onPrint: () => void;
 }
 
 export default function CustomerView({
     customer,
+    details,
     onClose,
+    onPrint,
 }: Props) {
 
-    const [details, setDetails] = useState<any>(null);
+
 
     async function loadCustomerDetails() {
         try {
@@ -24,7 +28,7 @@ export default function CustomerView({
                 `/api/customer/${customer.id}/details`
             );
 
-            setDetails(res.data);
+
 
         } catch (error) {
 
@@ -76,6 +80,14 @@ export default function CustomerView({
                         </p>
 
                     </div>
+
+
+                    <button
+                        onClick={onPrint}
+                        className="rounded-lg bg-blue-600 px-5 py-2 text-white hover:bg-blue-700"
+                    >
+                        Print
+                    </button>
 
                     <button
 

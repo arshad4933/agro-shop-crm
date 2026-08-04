@@ -93,6 +93,24 @@ export async function POST(request: Request) {
         },
       });
 
+      // =======================
+      // SALE PAYMENT LEDGER ENTRY
+      // =======================
+
+      const ledgerEntry = await tx.salePayment.create({
+        data: {
+          saleId: Number(saleId),
+          customerId: Number(customerId),
+          amount: payAmount,
+          paymentMethod,
+          paymentType: "DUE",
+          paymentDate: new Date(paymentDate),
+          note,
+        },
+      });
+
+      console.log("SALE PAYMENT CREATED:", ledgerEntry);
+
       await tx.sale.update({
         where: {
           id: Number(saleId),
