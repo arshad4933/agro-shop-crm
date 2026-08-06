@@ -9,6 +9,7 @@ import {
     Package,
     Receipt,
     BarChart3,
+    Wallet,
 } from "lucide-react";
 
 export default function Sidebar() {
@@ -82,6 +83,15 @@ export default function Sidebar() {
                 >
                     <Receipt size={20} />
                     Customer Payment
+                </Link>
+
+
+                <Link
+                    href="/cashbook"
+                    className="flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-green-600"
+                >
+                    <Wallet size={20} />
+                    Cash Book
                 </Link>
                 <Link
                     href="/reports"
