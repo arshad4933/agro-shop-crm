@@ -1,24 +1,33 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
-// =======================
-// GET SUPPLIER PAYMENT BY ID
-// =======================
+// ======================================
+// GET PAYMENT BY ID
+// ======================================
+
 export async function GET(
     request: Request,
-    { params }: { params: Promise<{ id: string }> }
+    {
+        params,
+    }: {
+        params: Promise<{ id: string }>;
+    }
 ) {
     try {
+
         const { id } = await params;
 
-        const payment = await prisma.supplierPayment.findUnique({
-            where: {
-                id: Number(id),
-            },
-            include: {
-                supplier: true,
-            },
-        });
+        const paymentId = Number(id);
+
+        const payment =
+            await prisma.supplierPayment.findUnique({
+                where: {
+                    id: paymentId,
+                },
+                include: {
+                    supplier: true,
+                },
+            });
 
         if (!payment) {
             return NextResponse.json(
@@ -32,7 +41,9 @@ export async function GET(
         }
 
         return NextResponse.json(payment);
+
     } catch (error) {
+
         console.error(error);
 
         return NextResponse.json(
@@ -46,15 +57,23 @@ export async function GET(
     }
 }
 
-// =======================
+// ======================================
 // UPDATE SUPPLIER PAYMENT
-// =======================
+// ======================================
+
 export async function PUT(
     request: Request,
-    { params }: { params: Promise<{ id: string }> }
+    {
+        params,
+    }: {
+        params: Promise<{ id: string }>;
+    }
 ) {
     try {
+
         const { id } = await params;
+
+        const paymentId = Number(id);
 
         const body = await request.json();
 
@@ -65,15 +84,13 @@ export async function PUT(
             note,
         } = body;
 
-        if (
-            !amount ||
-            !paymentMethod ||
-            !paymentDate
-        ) {
+        const newAmount = Number(amount);
+
+        if (!newAmount || newAmount <= 0) {
             return NextResponse.json(
                 {
                     message:
-                        "Amount, Payment Method and Payment Date are required",
+                        "Payment amount must be greater than zero",
                 },
                 {
                     status: 400,
@@ -81,96 +98,394 @@ export async function PUT(
             );
         }
 
-        const result = await prisma.$transaction(async (tx) => {
-            const payment = await tx.supplierPayment.findUnique({
-                where: {
-                    id: Number(id),
+        if (!paymentMethod) {
+            return NextResponse.json(
+                {
+                    message: "Payment method is required",
                 },
-            });
+                {
+                    status: 400,
+                }
+            );
+        }
 
-            if (!payment) {
-                throw new Error("Supplier payment not found");
-            }
-
-            const purchase = await tx.purchase.findFirst({
-                where: {
-                    supplierId: payment.supplierId,
+        if (!paymentDate) {
+            return NextResponse.json(
+                {
+                    message: "Payment date is required",
                 },
-                orderBy: {
-                    purchaseDate: "asc",
-                },
-            });
+                {
+                    status: 400,
+                }
+            );
+        }
 
-            if (!purchase) {
-                throw new Error("Purchase not found");
-            }
+        const result = await prisma.$transaction(
+            async (tx) => {
 
-            // Reverse old payment
-            await tx.purchase.update({
-                where: {
-                    id: purchase.id,
-                },
-                data: {
-                    paidAmount:
-                        Number(purchase.paidAmount) -
-                        Number(payment.amount),
+                // ======================================
+                // FIND OLD PAYMENT
+                // ======================================
 
-                    dueAmount:
-                        Number(purchase.dueAmount) +
-                        Number(payment.amount),
-                },
-            });
+                const oldPayment =
+                    await tx.supplierPayment.findUnique({
+                        where: {
+                            id: paymentId,
+                        },
+                    });
 
-            const updatedPurchase =
-                await tx.purchase.findUnique({
-                    where: {
-                        id: purchase.id,
-                    },
-                });
+                if (!oldPayment) {
+                    throw new Error(
+                        "Supplier payment not found"
+                    );
+                }
 
-            if (!updatedPurchase) {
-                throw new Error("Purchase not found");
-            }
+                const supplierId =
+                    oldPayment.supplierId;
 
-            // Apply new payment
-            await tx.purchase.update({
-                where: {
-                    id: purchase.id,
-                },
-                data: {
-                    paidAmount:
-                        Number(updatedPurchase.paidAmount) +
-                        Number(amount),
+                // ======================================
+                // GET SUPPLIER
+                // ======================================
 
-                    dueAmount:
-                        Number(updatedPurchase.dueAmount) -
-                        Number(amount),
-                },
-            });
+                const supplier =
+                    await tx.supplier.findUnique({
+                        where: {
+                            id: supplierId,
+                        },
+                    });
 
-            const updatedPayment =
-                await tx.supplierPayment.update({
-                    where: {
-                        id: Number(id),
-                    },
+                if (!supplier) {
+                    throw new Error(
+                        "Supplier not found"
+                    );
+                }
+
+                // ======================================
+                // REVERSE OLD PAYMENT
+                // ======================================
+
+                const purchases =
+                    await tx.purchase.findMany({
+                        where: {
+                            supplierId,
+                        },
+                        orderBy: {
+                            purchaseDate: "asc",
+                        },
+                    });
+
+                let amountToRestore =
+                    Number(oldPayment.amount);
+
+                // Restore purchase dues in reverse FIFO
+                for (
+                    let i = purchases.length - 1;
+                    i >= 0;
+                    i--
+                ) {
+
+                    if (amountToRestore <= 0) {
+                        break;
+                    }
+
+                    const purchase =
+                        purchases[i];
+
+                    const originalPaid =
+                        Number(purchase.paidAmount);
+
+                    if (originalPaid <= 0) {
+                        continue;
+                    }
+
+                    const restore =
+                        Math.min(
+                            originalPaid,
+                            amountToRestore
+                        );
+
+                    await tx.purchase.update({
+                        where: {
+                            id: purchase.id,
+                        },
+                        data: {
+                            paidAmount:
+                                originalPaid -
+                                restore,
+
+                            dueAmount:
+                                Number(
+                                    purchase.dueAmount
+                                ) + restore,
+                        },
+                    });
+
+                    amountToRestore -= restore;
+                }
+
+                // Restore opening due if required
+                if (amountToRestore > 0) {
+
+                    await tx.supplier.update({
+                        where: {
+                            id: supplierId,
+                        },
+                        data: {
+                            openingDue:
+                                Number(
+                                    supplier.openingDue
+                                ) - amountToRestore,
+                        },
+                    });
+                }
+
+                // ======================================
+                // CHECK NEW PAYMENT
+                // ======================================
+
+                const freshSupplier =
+                    await tx.supplier.findUnique({
+                        where: {
+                            id: supplierId,
+                        },
+                    });
+
+                if (!freshSupplier) {
+                    throw new Error(
+                        "Supplier not found"
+                    );
+                }
+
+                const freshPurchases =
+                    await tx.purchase.findMany({
+                        where: {
+                            supplierId,
+                        },
+                        orderBy: {
+                            purchaseDate: "asc",
+                        },
+                    });
+
+                const purchaseDue =
+                    freshPurchases.reduce(
+                        (sum, purchase) =>
+                            sum +
+                            Number(
+                                purchase.dueAmount
+                            ),
+                        0
+                    );
+
+                const totalDue =
+                    Number(
+                        freshSupplier.openingDue
+                    ) + purchaseDue;
+
+                if (newAmount > totalDue) {
+                    throw new Error(
+                        `Payment cannot be greater than current due. Current due: ${totalDue.toFixed(
+                            2
+                        )}`
+                    );
+                }
+
+                // ======================================
+                // APPLY NEW PAYMENT
+                // ======================================
+
+                let remainingPayment =
+                    newAmount;
+
+                const currentOpeningDue =
+                    Number(
+                        freshSupplier.openingDue
+                    );
+
+                if (
+                    currentOpeningDue >
+                    0
+                ) {
+
+                    const openingPayment =
+                        Math.min(
+                            currentOpeningDue,
+                            remainingPayment
+                        );
+
+                    await tx.supplier.update({
+                        where: {
+                            id: supplierId,
+                        },
+                        data: {
+                            openingDue:
+                                currentOpeningDue -
+                                openingPayment,
+                        },
+                    });
+
+                    remainingPayment -=
+                        openingPayment;
+                }
+
+                // FIFO
+                for (
+                    const purchase of freshPurchases
+                ) {
+
+                    if (
+                        remainingPayment <=
+                        0
+                    ) {
+                        break;
+                    }
+
+                    const due =
+                        Number(
+                            purchase.dueAmount
+                        );
+
+                    if (due <= 0) {
+                        continue;
+                    }
+
+                    const pay =
+                        Math.min(
+                            due,
+                            remainingPayment
+                        );
+
+                    await tx.purchase.update({
+                        where: {
+                            id: purchase.id,
+                        },
+                        data: {
+                            paidAmount:
+                                Number(
+                                    purchase.paidAmount
+                                ) + pay,
+
+                            dueAmount:
+                                due - pay,
+                        },
+                    });
+
+                    remainingPayment -=
+                        pay;
+                }
+
+                // ======================================
+                // UPDATE PAYMENT
+                // ======================================
+
+                const updatedPayment =
+                    await tx.supplierPayment.update({
+                        where: {
+                            id: paymentId,
+                        },
+                        data: {
+                            amount: newAmount,
+                            paymentMethod,
+                            paymentDate:
+                                new Date(paymentDate),
+                            note:
+                                note || null,
+                        },
+                    });
+
+                // ======================================
+                // UPDATE CASHBOOK
+                // ======================================
+
+                const cashBook =
+                    await tx.cashBook.findFirst({
+                        where: {
+                            referenceType:
+                                "SupplierPayment",
+                            referenceId:
+                                paymentId,
+                        },
+                    });
+
+                if (cashBook) {
+
+                    await tx.cashBook.update({
+                        where: {
+                            id: cashBook.id,
+                        },
+                        data: {
+                            transactionDate:
+                                new Date(
+                                    paymentDate
+                                ),
+
+                            amount: newAmount,
+
+                            description:
+                                note ||
+                                `Supplier Payment - ${supplier.name}`,
+                        },
+                    });
+
+                } else {
+
+                    await tx.cashBook.create({
+                        data: {
+                            transactionDate:
+                                new Date(
+                                    paymentDate
+                                ),
+
+                            type: "Expense",
+
+                            amount: newAmount,
+
+                            description:
+                                note ||
+                                `Supplier Payment - ${supplier.name}`,
+
+                            referenceType:
+                                "SupplierPayment",
+
+                            referenceId:
+                                paymentId,
+                        },
+                    });
+                }
+
+                // ======================================
+                // ACTIVITY LOG
+                // ======================================
+
+                await tx.activityLog.create({
                     data: {
-                        amount: Number(amount),
-                        paymentMethod,
-                        paymentDate: new Date(paymentDate),
-                        note,
+                        action: "UPDATE",
+                        module:
+                            "Supplier Payment",
+                        referenceId:
+                            paymentId,
+                        description:
+                            `Supplier payment #${paymentId} updated`,
                     },
                 });
 
-            return updatedPayment;
+                return updatedPayment;
+            }
+        );
+
+        return NextResponse.json({
+            message:
+                "Supplier payment updated successfully",
+            payment: result,
         });
 
-        return NextResponse.json(result);
     } catch (error: unknown) {
+
         console.error(error);
 
         return NextResponse.json(
             {
-                message: "Failed to update supplier payment",
+                message:
+                    "Failed to update supplier payment",
                 error:
                     error instanceof Error
                         ? error.message
@@ -183,74 +498,180 @@ export async function PUT(
     }
 }
 
-// =======================
+// ======================================
 // DELETE SUPPLIER PAYMENT
-// =======================
+// ======================================
+
 export async function DELETE(
     request: Request,
-    { params }: { params: Promise<{ id: string }> }
+    {
+        params,
+    }: {
+        params: Promise<{ id: string }>;
+    }
 ) {
     try {
+
         const { id } = await params;
 
-        const result = await prisma.$transaction(async (tx) => {
-            const payment = await tx.supplierPayment.findUnique({
-                where: {
-                    id: Number(id),
-                },
-            });
+        const paymentId = Number(id);
 
-            if (!payment) {
-                throw new Error("Supplier payment not found");
+        const result = await prisma.$transaction(
+            async (tx) => {
+
+                const payment =
+                    await tx.supplierPayment.findUnique({
+                        where: {
+                            id: paymentId,
+                        },
+                    });
+
+                if (!payment) {
+                    throw new Error(
+                        "Supplier payment not found"
+                    );
+                }
+
+                const supplierId =
+                    payment.supplierId;
+
+                const supplier =
+                    await tx.supplier.findUnique({
+                        where: {
+                            id: supplierId,
+                        },
+                    });
+
+                if (!supplier) {
+                    throw new Error(
+                        "Supplier not found"
+                    );
+                }
+
+                const purchases =
+                    await tx.purchase.findMany({
+                        where: {
+                            supplierId,
+                        },
+                        orderBy: {
+                            purchaseDate: "asc",
+                        },
+                    });
+
+                let amountToRestore =
+                    Number(payment.amount);
+
+                // Restore purchase due
+                for (
+                    let i = purchases.length - 1;
+                    i >= 0;
+                    i--
+                ) {
+
+                    if (amountToRestore <= 0) {
+                        break;
+                    }
+
+                    const purchase =
+                        purchases[i];
+
+                    const paid =
+                        Number(
+                            purchase.paidAmount
+                        );
+
+                    if (paid <= 0) {
+                        continue;
+                    }
+
+                    const restore =
+                        Math.min(
+                            paid,
+                            amountToRestore
+                        );
+
+                    await tx.purchase.update({
+                        where: {
+                            id: purchase.id,
+                        },
+                        data: {
+                            paidAmount:
+                                paid - restore,
+
+                            dueAmount:
+                                Number(
+                                    purchase.dueAmount
+                                ) + restore,
+                        },
+                    });
+
+                    amountToRestore -=
+                        restore;
+                }
+
+                // Restore opening due
+                if (amountToRestore > 0) {
+
+                    await tx.supplier.update({
+                        where: {
+                            id: supplierId,
+                        },
+                        data: {
+                            openingDue:
+                                Number(
+                                    supplier.openingDue
+                                ) - amountToRestore,
+                        },
+                    });
+                }
+
+                // Delete CashBook
+                await tx.cashBook.deleteMany({
+                    where: {
+                        referenceType:
+                            "SupplierPayment",
+                        referenceId:
+                            paymentId,
+                    },
+                });
+
+                // Delete Activity Log
+                await tx.activityLog.create({
+                    data: {
+                        action: "DELETE",
+                        module:
+                            "Supplier Payment",
+                        referenceId:
+                            paymentId,
+                        description:
+                            `Supplier payment #${paymentId} deleted`,
+                    },
+                });
+
+                // Delete Payment
+                await tx.supplierPayment.delete({
+                    where: {
+                        id: paymentId,
+                    },
+                });
+
+                return {
+                    message:
+                        "Supplier payment deleted successfully",
+                };
             }
-
-            const purchase = await tx.purchase.findFirst({
-                where: {
-                    supplierId: payment.supplierId,
-                },
-                orderBy: {
-                    purchaseDate: "asc",
-                },
-            });
-
-            if (!purchase) {
-                throw new Error("Purchase not found");
-            }
-
-            // Restore Purchase Amount
-            await tx.purchase.update({
-                where: {
-                    id: purchase.id,
-                },
-                data: {
-                    paidAmount:
-                        Number(purchase.paidAmount) -
-                        Number(payment.amount),
-
-                    dueAmount:
-                        Number(purchase.dueAmount) +
-                        Number(payment.amount),
-                },
-            });
-
-            await tx.supplierPayment.delete({
-                where: {
-                    id: Number(id),
-                },
-            });
-
-            return {
-                message: "Supplier payment deleted successfully",
-            };
-        });
+        );
 
         return NextResponse.json(result);
+
     } catch (error: unknown) {
+
         console.error(error);
 
         return NextResponse.json(
             {
-                message: "Failed to delete supplier payment",
+                message:
+                    "Failed to delete supplier payment",
                 error:
                     error instanceof Error
                         ? error.message

@@ -10,6 +10,7 @@ import {
     Receipt,
     BarChart3,
     Wallet,
+    CircleDollarSign,
 } from "lucide-react";
 
 export default function Sidebar() {
@@ -69,7 +70,13 @@ export default function Sidebar() {
                     <ShoppingCart size={20} />
                     Purchase
                 </Link>
-
+                <Link
+                    href="/supplier-payment"
+                    className="flex items-center gap-3 rounded-lg px-4 py-3 hover:bg-green-600"
+                >
+                    <CircleDollarSign size={20} />
+                    Supplier Payment
+                </Link>
                 <Link
                     href="/sale"
                     className="flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-green-600"

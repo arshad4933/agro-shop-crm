@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
-// =======================
+// ======================================
 // GET ALL SUPPLIER PAYMENTS
-// =======================
+// ======================================
+
 export async function GET() {
     try {
         const payments = await prisma.supplierPayment.findMany({
@@ -11,7 +12,7 @@ export async function GET() {
                 supplier: true,
             },
             orderBy: {
-                id: "desc",
+                paymentDate: "desc",
             },
         });
 
@@ -30,9 +31,10 @@ export async function GET() {
     }
 }
 
-// =======================
+// ======================================
 // CREATE SUPPLIER PAYMENT
-// =======================
+// ======================================
+
 export async function POST(request: Request) {
     try {
         const body = await request.json();
@@ -45,16 +47,17 @@ export async function POST(request: Request) {
             note,
         } = body;
 
-        if (
-            !supplierId ||
-            !amount ||
-            !paymentMethod ||
-            !paymentDate
-        ) {
+        const supplierIdNumber = Number(supplierId);
+        const paymentAmount = Number(amount);
+
+        // ======================================
+        // VALIDATION
+        // ======================================
+
+        if (!supplierIdNumber) {
             return NextResponse.json(
                 {
-                    message:
-                        "Supplier, Amount, Payment Method and Payment Date are required",
+                    message: "Supplier is required",
                 },
                 {
                     status: 400,
@@ -62,78 +65,212 @@ export async function POST(request: Request) {
             );
         }
 
+        if (!paymentAmount || paymentAmount <= 0) {
+            return NextResponse.json(
+                {
+                    message: "Payment amount must be greater than zero",
+                },
+                {
+                    status: 400,
+                }
+            );
+        }
+
+        if (!paymentMethod) {
+            return NextResponse.json(
+                {
+                    message: "Payment method is required",
+                },
+                {
+                    status: 400,
+                }
+            );
+        }
+
+        if (!paymentDate) {
+            return NextResponse.json(
+                {
+                    message: "Payment date is required",
+                },
+                {
+                    status: 400,
+                }
+            );
+        }
+
+        // ======================================
+        // TRANSACTION
+        // ======================================
+
         const result = await prisma.$transaction(async (tx) => {
+
+            const supplier = await tx.supplier.findUnique({
+                where: {
+                    id: supplierIdNumber,
+                },
+            });
+
+            if (!supplier) {
+                throw new Error("Supplier not found");
+            }
+
+            // --------------------------------------
+            // Current outstanding amount
+            // --------------------------------------
+
             const purchases = await tx.purchase.findMany({
                 where: {
-                    supplierId: Number(supplierId),
-                    dueAmount: {
-                        gt: 0,
-                    },
+                    supplierId: supplierIdNumber,
                 },
                 orderBy: {
                     purchaseDate: "asc",
                 },
             });
 
-            let remainingPayment = Number(amount);
+            const totalPurchaseDue = purchases.reduce(
+                (sum, purchase) =>
+                    sum + Number(purchase.dueAmount),
+                0
+            );
+
+            const openingDue = Number(supplier.openingDue);
+
+            const totalDue =
+                openingDue + totalPurchaseDue;
+
+            if (paymentAmount > totalDue) {
+                throw new Error(
+                    `Payment cannot be greater than total due. Current due: ${totalDue.toFixed(
+                        2
+                    )}`
+                );
+            }
+
+            // --------------------------------------
+            // Create payment first
+            // --------------------------------------
+
+            const payment = await tx.supplierPayment.create({
+                data: {
+                    supplierId: supplierIdNumber,
+                    amount: paymentAmount,
+                    paymentMethod,
+                    paymentDate: new Date(paymentDate),
+                    note: note || null,
+                },
+            });
+
+            // --------------------------------------
+            // 1. First adjust opening due
+            // --------------------------------------
+
+            let remainingPayment = paymentAmount;
+
+            if (openingDue > 0) {
+                const openingPayment = Math.min(
+                    openingDue,
+                    remainingPayment
+                );
+
+                await tx.supplier.update({
+                    where: {
+                        id: supplierIdNumber,
+                    },
+                    data: {
+                        openingDue:
+                            openingDue - openingPayment,
+                    },
+                });
+
+                remainingPayment -= openingPayment;
+            }
+
+            // --------------------------------------
+            // 2. FIFO purchase due payment
+            // --------------------------------------
 
             for (const purchase of purchases) {
-                if (remainingPayment <= 0) break;
+
+                if (remainingPayment <= 0) {
+                    break;
+                }
 
                 const due = Number(purchase.dueAmount);
 
-                const pay = Math.min(due, remainingPayment);
+                if (due <= 0) {
+                    continue;
+                }
+
+                const pay = Math.min(
+                    due,
+                    remainingPayment
+                );
 
                 await tx.purchase.update({
                     where: {
                         id: purchase.id,
                     },
                     data: {
-                        paidAmount: Number(purchase.paidAmount) + pay,
-                        dueAmount: due - pay,
+                        paidAmount:
+                            Number(purchase.paidAmount) +
+                            pay,
+
+                        dueAmount:
+                            due - pay,
                     },
                 });
 
                 remainingPayment -= pay;
             }
 
-            const payment = await tx.supplierPayment.create({
-                data: {
-                    supplierId: Number(supplierId),
-                    amount: Number(amount),
-                    paymentMethod,
-                    paymentDate: new Date(paymentDate),
-                    note,
-                },
-            });
+            // --------------------------------------
+            // CashBook
+            // --------------------------------------
 
-            // =======================
-            // CASH BOOK ENTRY
-            // =======================
             await tx.cashBook.create({
                 data: {
                     transactionDate: new Date(paymentDate),
-
                     type: "Expense",
-
-                    amount: Number(amount),
+                    amount: paymentAmount,
 
                     description:
-                        note || "Supplier Payment",
+                        note ||
+                        `Supplier Payment - ${supplier.name}`,
 
                     referenceType: "SupplierPayment",
-
                     referenceId: payment.id,
+                },
+            });
+
+            // --------------------------------------
+            // Activity Log
+            // --------------------------------------
+
+            await tx.activityLog.create({
+                data: {
+                    action: "CREATE",
+                    module: "Supplier Payment",
+                    referenceId: payment.id,
+                    description:
+                        `Supplier payment of ${paymentAmount} created for ${supplier.name}`,
                 },
             });
 
             return payment;
         });
 
-        return NextResponse.json(result, {
-            status: 201,
-        });
+        return NextResponse.json(
+            {
+                message: "Supplier payment created successfully",
+                payment: result,
+            },
+            {
+                status: 201,
+            }
+        );
+
     } catch (error: unknown) {
+
         console.error(error);
 
         return NextResponse.json(
