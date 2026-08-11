@@ -71,6 +71,14 @@ export default function Sidebar() {
                     Purchase
                 </Link>
                 <Link
+                    href="/purchase-return"
+                    className="flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-green-600"
+                >
+                    <Receipt size={20} />
+                    Purchase Return
+                </Link>
+
+                <Link
                     href="/supplier-payment"
                     className="flex items-center gap-3 rounded-lg px-4 py-3 hover:bg-green-600"
                 >

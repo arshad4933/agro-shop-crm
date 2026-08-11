@@ -5,6 +5,64 @@ import { useParams, useRouter } from "next/navigation";
 import axios from "axios";
 import { toast } from "react-hot-toast";
 
+type Purchase = {
+    id: number;
+    purchaseDate?: string | null;
+    invoiceNumber?: string | null;
+    purchaseNumber?: string | null;
+    invoiceNo?: string | null;
+
+    totalAmount?: number | string | null;
+    total?: number | string | null;
+    grandTotal?: number | string | null;
+
+    paidAmount?: number | string | null;
+    dueAmount?: number | string | null;
+};
+
+type SupplierPayment = {
+    id: number;
+    supplierId: number;
+    amount: number | string;
+    paymentMethod: string;
+    paymentDate: string;
+    note?: string | null;
+};
+
+type PurchaseReturnItem = {
+    id: number;
+    quantity: number;
+    buyPrice: number | string;
+    totalPrice: number | string;
+
+    batch?: {
+        product?: {
+            name: string;
+        };
+    };
+};
+
+type PurchaseReturn = {
+    id: number;
+    purchaseId: number;
+    supplierId: number;
+
+    returnDate: string;
+
+    totalAmount: number | string;
+    cashReceived: number | string;
+    adjustedDue: number | string;
+
+    reason?: string | null;
+
+    purchase?: {
+        purchaseNo: string;
+    };
+
+    items?: PurchaseReturnItem[];
+};
+
+
 type Supplier = {
     id: number;
     name: string;
@@ -14,9 +72,10 @@ type Supplier = {
     address?: string | null;
     openingDue: number | string;
     isActive: boolean;
-    batches?: any[];
-    purchases?: any[];
-    supplierPayments?: any[];
+
+    purchases?: Purchase[];
+    supplierPayments?: SupplierPayment[];
+    purchaseReturns?: PurchaseReturn[];
 };
 
 export default function SupplierDetailsPage() {
@@ -25,18 +84,13 @@ export default function SupplierDetailsPage() {
 
     const supplierId = params.id;
 
-    const [supplier, setSupplier] =
-        useState<Supplier | null>(null);
+    const [supplier, setSupplier] = useState<Supplier | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [printing, setPrinting] = useState(false);
 
-    const [loading, setLoading] =
-        useState(true);
-
-    const [printing, setPrinting] =
-        useState(false);
-
-    // ==========================================
+    // ======================================
     // LOAD SUPPLIER
-    // ==========================================
+    // ======================================
 
     async function loadSupplier() {
         try {
@@ -65,9 +119,9 @@ export default function SupplierDetailsPage() {
         }
     }, [supplierId]);
 
-    // ==========================================
+    // ======================================
     // PRINT
-    // ==========================================
+    // ======================================
 
     function handlePrint() {
         setPrinting(true);
@@ -75,54 +129,18 @@ export default function SupplierDetailsPage() {
         setTimeout(() => {
             window.print();
             setPrinting(false);
-        }, 200);
+        }, 150);
     }
 
-    // ==========================================
-    // MONEY FORMAT
-    // ==========================================
-
-    function money(value: number | string) {
-        return Number(value || 0).toLocaleString(
-            "en-BD",
-            {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2,
-            }
-        );
-    }
-
-    // ==========================================
-    // DATE FORMAT
-    // ==========================================
-
-    function formatDate(value: any) {
-        if (!value) return "-";
-
-        const d = new Date(value);
-
-        if (isNaN(d.getTime())) {
-            return "-";
-        }
-
-        return d.toLocaleDateString("en-BD", {
-            day: "2-digit",
-            month: "2-digit",
-            year: "numeric",
-        });
-    }
-
-    // ==========================================
+    // ======================================
     // LOADING
-    // ==========================================
+    // ======================================
 
     if (loading) {
         return (
-            <div className="flex min-h-[400px] items-center justify-center">
+            <div className="flex min-h-[500px] items-center justify-center">
                 <div className="text-center">
-                    <div className="text-4xl">
-                        ⏳
-                    </div>
+                    <div className="text-4xl">⏳</div>
 
                     <p className="mt-3 text-slate-500">
                         Loading supplier details...
@@ -132,31 +150,27 @@ export default function SupplierDetailsPage() {
         );
     }
 
-    // ==========================================
+    // ======================================
     // NOT FOUND
-    // ==========================================
+    // ======================================
 
     if (!supplier) {
         return (
-            <div className="flex min-h-[400px] items-center justify-center">
+            <div className="flex min-h-[500px] items-center justify-center">
                 <div className="rounded-2xl bg-white p-10 text-center shadow">
-                    <div className="text-5xl">
-                        ❌
-                    </div>
+                    <div className="text-5xl">❌</div>
 
                     <h2 className="mt-4 text-2xl font-bold text-slate-800">
                         Supplier Not Found
                     </h2>
 
                     <p className="mt-2 text-slate-500">
-                        The supplier you are looking for
-                        does not exist.
+                        The supplier you are looking for does not exist.
                     </p>
 
                     <button
-                        onClick={() =>
-                            router.push("/supplier")
-                        }
+                        type="button"
+                        onClick={() => router.push("/supplier")}
                         className="mt-6 rounded-xl bg-green-600 px-6 py-3 font-semibold text-white hover:bg-green-700"
                     >
                         ← Back to Suppliers
@@ -166,209 +180,318 @@ export default function SupplierDetailsPage() {
         );
     }
 
-    // ==========================================
+    // ======================================
     // DATA
-    // ==========================================
+    // ======================================
 
-    const purchases =
-        supplier.purchases || [];
+    const purchases = supplier.purchases || [];
+    const duePayments = supplier.supplierPayments || [];
 
-    const payments =
-        supplier.supplierPayments || [];
+    const purchaseReturns = supplier.purchaseReturns || [];
 
-    // ==========================================
+
+    const totalPurchaseReturn = purchaseReturns.reduce(
+        (sum, purchaseReturn) => {
+            return (
+                sum +
+                Number(purchaseReturn.totalAmount || 0)
+            );
+        },
+        0
+    );
+
+    const totalReturnCashReceived = purchaseReturns.reduce(
+        (sum, purchaseReturn) => {
+            return (
+                sum +
+                Number(purchaseReturn.cashReceived || 0)
+            );
+        },
+        0
+    );
+
+    const totalReturnDueAdjusted = purchaseReturns.reduce(
+        (sum, purchaseReturn) => {
+            return (
+                sum +
+                Number(purchaseReturn.adjustedDue || 0)
+            );
+        },
+        0
+    );
+
+    // ======================================
+    // MONEY FORMAT
+    // ======================================
+
+    function money(
+        value: number | string | null | undefined
+    ) {
+        return Number(value || 0).toLocaleString("en-BD", {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+        });
+    }
+
+    // ======================================
+    // DATE FORMAT
+    // ======================================
+
+    function formatDate(value: string | null | undefined) {
+        if (!value) {
+            return "-";
+        }
+
+        const date = new Date(value);
+
+        if (isNaN(date.getTime())) {
+            return "-";
+        }
+
+        return date.toLocaleDateString("en-BD");
+    }
+
+    // ======================================
     // TOTAL PURCHASE
-    // ==========================================
+    // ======================================
 
-    const totalPurchase =
-        purchases.reduce(
-            (sum, purchase) =>
+    const totalPurchase = purchases.reduce(
+        (sum, purchase) => {
+            return (
                 sum +
                 Number(
                     purchase.totalAmount ??
                     purchase.total ??
                     purchase.grandTotal ??
                     0
-                ),
-            0
-        );
+                )
+            );
+        },
+        0
+    );
 
-    // ==========================================
+    // ======================================
+    // PURCHASE-TIME PAID
+    // ======================================
+
+    const purchaseTimePaid = purchases.reduce(
+        (sum, purchase) => {
+            return (
+                sum +
+                Number(purchase.paidAmount || 0)
+            );
+        },
+        0
+    );
+
+    // ======================================
+    // LATER DUE PAYMENTS
+    // ======================================
+
+    const totalDuePayment = duePayments.reduce(
+        (sum, payment) => {
+            return (
+                sum +
+                Number(payment.amount || 0)
+            );
+        },
+        0
+    );
+
+    // ======================================
     // TOTAL PAID
-    // ==========================================
+    // ======================================
 
     const totalPaid =
-        payments.reduce(
-            (sum, payment) =>
-                sum +
-                Number(payment.amount || 0),
-            0
-        );
+        purchaseTimePaid + totalDuePayment;
 
-    // ==========================================
-    // PURCHASE DUE
-    // ==========================================
-
-    const totalPurchaseDue =
-        purchases.reduce(
-            (sum, purchase) =>
-                sum +
-                Number(
-                    purchase.dueAmount || 0
-                ),
-            0
-        );
-
-    // ==========================================
+    // ======================================
     // OPENING DUE
-    // ==========================================
+    // ======================================
 
     const openingDue =
         Number(supplier.openingDue || 0);
 
-    // ==========================================
+    // ======================================
+    // CURRENT PURCHASE DUE
+    // ======================================
+
+    const currentPurchaseDue = purchases.reduce(
+        (sum, purchase) => {
+            return (
+                sum +
+                Number(purchase.dueAmount || 0)
+            );
+        },
+        0
+    );
+
+
+
+    // ======================================
     // CURRENT DUE
-    // ==========================================
+    // ======================================
 
     const currentDue =
-        openingDue + totalPurchaseDue;
+        openingDue + currentPurchaseDue;
 
     return (
         <>
-            {/* ==================================================
-                PRINT CSS
-            ================================================== */}
+            {/* =========================================
+                PRINT STYLE
+            ========================================== */}
 
             <style jsx global>{`
-                @media print {
+    @media print {
+        /* =====================================
+           HIDE EVERYTHING EXCEPT PRINT AREA
+        ===================================== */
 
-                    @page {
-                        size: A4;
-                        margin: 10mm;
-                    }
+        body * {
+            visibility: hidden !important;
+        }
 
-                    html,
-                    body {
-                        width: 210mm;
-                        min-height: 297mm;
-                        margin: 0 !important;
-                        padding: 0 !important;
-                        background: white !important;
-                    }
+        .print-area,
+        .print-area * {
+            visibility: visible !important;
+        }
 
-                    /*
-                     * Hide EVERYTHING from dashboard
-                     */
-                    body * {
-                        visibility: hidden !important;
-                    }
+        /* =====================================
+           REMOVE SIDEBAR / MAIN LAYOUT EFFECT
+        ===================================== */
 
-                    /*
-                     * Show ONLY supplier print page
-                     */
-                    .supplier-print-page,
-                    .supplier-print-page * {
-                        visibility: visible !important;
-                    }
+        .print-area {
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
 
-                    .supplier-print-page {
-                        position: absolute !important;
-                        left: 0 !important;
-                        top: 0 !important;
-                        width: 100% !important;
-                        margin: 0 !important;
-                        padding: 0 !important;
-                        background: white !important;
-                    }
+            width: 100% !important;
+            max-width: none !important;
 
-                    .no-print {
-                        display: none !important;
-                    }
+            margin: 0 !important;
+            padding: 0 !important;
+        }
 
-                    .print-only {
-                        display: block !important;
-                    }
+        /* =====================================
+           BODY
+        ===================================== */
 
-                    .print-section {
-                        page-break-inside: avoid;
-                        break-inside: avoid;
-                    }
+        html,
+        body {
+            background: white !important;
+            margin: 0 !important;
+            padding: 0 !important;
+        }
 
-                    .print-table {
-                        width: 100% !important;
-                        border-collapse: collapse !important;
-                    }
+        body {
+            font-size: 11px !important;
+        }
 
-                    .print-table th,
-                    .print-table td {
-                        border: 1px solid #cbd5e1 !important;
-                        padding: 7px 8px !important;
-                        font-size: 10px !important;
-                    }
+        /* =====================================
+           HIDE BUTTONS / SCREEN ONLY ELEMENTS
+        ===================================== */
 
-                    .print-table th {
-                        background: #f1f5f9 !important;
-                        font-weight: 700 !important;
-                    }
+        .no-print {
+            display: none !important;
+        }
 
-                    .print-summary {
-                        display: grid !important;
-                        grid-template-columns: repeat(4, 1fr) !important;
-                        gap: 8px !important;
-                    }
+        /* =====================================
+           PRINT CARDS
+        ===================================== */
 
-                    .print-box {
-                        border: 1px solid #94a3b8 !important;
-                        padding: 10px !important;
-                    }
+        .print-card {
+            border: 1px solid #cbd5e1 !important;
+            box-shadow: none !important;
+            border-radius: 0 !important;
+        }
 
-                    .print-no-shadow {
-                        box-shadow: none !important;
-                    }
+        /* =====================================
+           SUMMARY CARDS
+        ===================================== */
 
-                    .print-border {
-                        border: 1px solid #64748b !important;
-                    }
+        .print-summary {
+            display: grid !important;
+            grid-template-columns: repeat(
+                4,
+                minmax(0, 1fr)
+            ) !important;
 
-                    .print-page-break {
-                        page-break-before: always;
-                        break-before: page;
-                    }
-                }
+            gap: 8px !important;
+        }
 
-                @media screen {
-                    .print-only {
-                        display: none;
-                    }
-                }
-            `}</style>
+        /* =====================================
+           TABLE
+        ===================================== */
 
-            {/* ==================================================
-                MAIN
-            ================================================== */}
+        table {
+            width: 100% !important;
+            min-width: 0 !important;
+            border-collapse: collapse !important;
+        }
 
-            <div className="supplier-print-page">
+        th,
+        td {
+            border-bottom: 1px solid #cbd5e1 !important;
+            padding: 7px 8px !important;
+        }
 
-                {/* ==================================================
+        thead {
+            display: table-header-group !important;
+        }
+
+        tr {
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+        }
+
+        /* =====================================
+           SECTIONS
+        ===================================== */
+
+        .print-section {
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+        }
+
+        /* =====================================
+           REMOVE SCREEN SPACING
+        ===================================== */
+
+        .space-y-6 > :not([hidden]) ~ :not([hidden]) {
+            margin-top: 12px !important;
+        }
+
+        /* =====================================
+           PRINT PAGE
+        ===================================== */
+
+        @page {
+            size: A4;
+            margin: 12mm;
+        }
+    }
+`}</style>
+
+            <div className="print-area mx-auto max-w-6xl space-y-6">
+
+                {/* =========================================
                     SCREEN HEADER
-                ================================================== */}
+                ========================================== */}
 
-                <div className="no-print mb-6 flex flex-col gap-4 rounded-2xl bg-white p-6 shadow-sm md:flex-row md:items-center md:justify-between">
-
+                <div className="no-print flex flex-col gap-4 rounded-2xl bg-white p-6 shadow-sm md:flex-row md:items-center md:justify-between">
                     <div>
                         <h1 className="text-3xl font-bold text-slate-800">
                             🚚 Supplier Details
                         </h1>
 
                         <p className="mt-1 text-slate-500">
-                            Complete supplier account
-                            information
+                            Complete supplier account information
                         </p>
                     </div>
 
                     <div className="flex gap-3">
-
                         <button
+                            type="button"
                             onClick={() =>
                                 router.push("/supplier")
                             }
@@ -378,6 +501,7 @@ export default function SupplierDetailsPage() {
                         </button>
 
                         <button
+                            type="button"
                             onClick={handlePrint}
                             disabled={printing}
                             className="rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
@@ -387,453 +511,628 @@ export default function SupplierDetailsPage() {
                                 ? "Preparing..."
                                 : "Print Details"}
                         </button>
-
                     </div>
                 </div>
 
-                {/* ==================================================
-                    PRINT DOCUMENT
-                ================================================== */}
+                {/* =========================================
+                    PRINT HEADER
+                ========================================== */}
 
-                <div className="bg-white">
-
-                    {/* ==================================================
-                        PRINT HEADER
-                    ================================================== */}
-
-                    <div className="print-section mb-5 border-b-2 border-slate-800 pb-4 text-center">
-
-                        <h1 className="text-2xl font-bold tracking-wide text-slate-900">
+                <div className="hidden print:block">
+                    <div className="border-b-2 border-slate-800 pb-4 text-center">
+                        <h1 className="text-2xl font-bold text-slate-900">
                             SUPPLIER ACCOUNT STATEMENT
                         </h1>
 
-                        <p className="mt-1 text-sm font-medium text-slate-600">
+                        <p className="mt-1 text-sm text-slate-600">
                             Agro Shop CRM
                         </p>
 
                         <p className="mt-1 text-xs text-slate-500">
                             Printed:{" "}
                             {new Date().toLocaleDateString(
-                                "en-BD",
-                                {
-                                    day: "2-digit",
-                                    month: "2-digit",
-                                    year: "numeric",
-                                }
+                                "en-BD"
                             )}
+                        </p>
+                    </div>
+                </div>
+
+                {/* =========================================
+                    SUPPLIER INFORMATION
+                ========================================== */}
+
+                <div className="print-card print-section rounded-2xl bg-white p-6 shadow-sm">
+                    <div className="mb-5 flex items-start justify-between border-b pb-4">
+                        <div>
+                            <h2 className="text-2xl font-bold text-slate-900">
+                                {supplier.name}
+                            </h2>
+
+                            {supplier.company && (
+                                <p className="mt-1 text-slate-500">
+                                    {supplier.company}
+                                </p>
+                            )}
+                        </div>
+
+                        {supplier.isActive ? (
+                            <span className="rounded-full bg-green-100 px-3 py-1 text-sm font-semibold text-green-700">
+                                🟢 Active
+                            </span>
+                        ) : (
+                            <span className="rounded-full bg-red-100 px-3 py-1 text-sm font-semibold text-red-700">
+                                🔴 Inactive
+                            </span>
+                        )}
+                    </div>
+
+                    <div className="grid gap-5 md:grid-cols-2">
+                        <div>
+                            <p className="text-xs font-medium uppercase text-slate-400">
+                                Supplier Name
+                            </p>
+
+                            <p className="mt-1 font-semibold text-slate-800">
+                                {supplier.name}
+                            </p>
+                        </div>
+
+                        <div>
+                            <p className="text-xs font-medium uppercase text-slate-400">
+                                Company
+                            </p>
+
+                            <p className="mt-1 font-semibold text-slate-800">
+                                {supplier.company || "-"}
+                            </p>
+                        </div>
+
+                        <div>
+                            <p className="text-xs font-medium uppercase text-slate-400">
+                                Phone
+                            </p>
+
+                            <p className="mt-1 font-semibold text-slate-800">
+                                {supplier.phone}
+                            </p>
+                        </div>
+
+                        <div>
+                            <p className="text-xs font-medium uppercase text-slate-400">
+                                Email
+                            </p>
+
+                            <p className="mt-1 font-semibold text-slate-800">
+                                {supplier.email || "-"}
+                            </p>
+                        </div>
+
+                        <div className="md:col-span-2">
+                            <p className="text-xs font-medium uppercase text-slate-400">
+                                Address
+                            </p>
+
+                            <p className="mt-1 font-semibold text-slate-800">
+                                {supplier.address || "-"}
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                {/* =========================================
+                    ACCOUNT SUMMARY
+                ========================================== */}
+
+                <div className="print-summary grid gap-4 md:grid-cols-4">
+
+                    {/* OPENING DUE */}
+
+                    <div className="print-card rounded-2xl border bg-white p-5 shadow-sm">
+                        <p className="text-xs font-medium uppercase text-slate-400">
+                            Opening Due
+                        </p>
+
+                        <p className="mt-2 text-xl font-bold text-orange-600">
+                            ৳ {money(openingDue)}
+                        </p>
+                    </div>
+
+                    {/* TOTAL PURCHASE */}
+
+                    <div className="print-card rounded-2xl border bg-white p-5 shadow-sm">
+                        <p className="text-xs font-medium uppercase text-slate-400">
+                            Total Purchase
+                        </p>
+
+                        <p className="mt-2 text-xl font-bold text-slate-800">
+                            ৳ {money(totalPurchase)}
+                        </p>
+                    </div>
+
+                    {/* PURCHASE-TIME PAID */}
+
+                    <div className="print-card rounded-2xl border bg-white p-5 shadow-sm">
+                        <p className="text-xs font-medium uppercase text-slate-400">
+                            Purchase-time Paid
+                        </p>
+
+                        <p className="mt-2 text-xl font-bold text-blue-600">
+                            ৳ {money(purchaseTimePaid)}
+                        </p>
+                    </div>
+
+                    {/* DUE PAYMENT */}
+
+                    <div className="print-card rounded-2xl border bg-white p-5 shadow-sm">
+                        <p className="text-xs font-medium uppercase text-slate-400">
+                            Due Payment
+                        </p>
+
+                        <p className="mt-2 text-xl font-bold text-green-600">
+                            ৳ {money(totalDuePayment)}
+                        </p>
+                    </div>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-3">
+
+                    <div className="print-card rounded-2xl border bg-orange-50 p-5 shadow-sm">
+
+                        <p className="text-sm font-semibold text-orange-600">
+                            Total Purchase Return
+                        </p>
+
+                        <p className="mt-2 text-2xl font-bold text-orange-700">
+                            ৳ {money(totalPurchaseReturn)}
                         </p>
 
                     </div>
 
-                    {/* ==================================================
-                        SUPPLIER INFORMATION
-                    ================================================== */}
+                    <div className="print-card rounded-2xl border bg-green-50 p-5 shadow-sm">
 
-                    <section className="print-section mb-4">
+                        <p className="text-sm font-semibold text-green-600">
+                            Return Cash Received
+                        </p>
 
-                        <div className="mb-2 flex items-center justify-between">
+                        <p className="mt-2 text-2xl font-bold text-green-700">
+                            ৳ {money(totalReturnCashReceived)}
+                        </p>
 
-                            <h2 className="text-sm font-bold uppercase tracking-wide text-slate-800">
-                                Supplier Information
-                            </h2>
+                    </div>
 
-                            <span
-                                className={`rounded-full border px-3 py-1 text-xs font-bold ${supplier.isActive
-                                        ? "border-green-600 text-green-700"
-                                        : "border-red-600 text-red-700"
-                                    }`}
-                            >
-                                {supplier.isActive
-                                    ? "ACTIVE"
-                                    : "INACTIVE"}
-                            </span>
+                    <div className="print-card rounded-2xl border bg-blue-50 p-5 shadow-sm">
 
-                        </div>
+                        <p className="text-sm font-semibold text-blue-600">
+                            Return Due Adjusted
+                        </p>
 
-                        <div className="print-border rounded-lg p-4">
+                        <p className="mt-2 text-2xl font-bold text-blue-700">
+                            ৳ {money(totalReturnDueAdjusted)}
+                        </p>
 
-                            <div className="mb-4 border-b border-slate-300 pb-3">
+                    </div>
 
-                                <h2 className="text-xl font-bold text-slate-900">
-                                    {supplier.name}
-                                </h2>
+                </div>
 
-                                {supplier.company && (
-                                    <p className="mt-1 text-sm font-medium text-slate-500">
-                                        {supplier.company}
-                                    </p>
-                                )}
+                {/* =========================================
+                    TOTAL PAID + CURRENT DUE
+                ========================================== */}
 
-                            </div>
+                <div className="grid gap-4 md:grid-cols-2">
 
-                            <div className="grid grid-cols-2 gap-x-10 gap-y-4">
+                    {/* TOTAL PAID */}
 
-                                <div>
-                                    <p className="text-[10px] font-semibold uppercase text-slate-500">
-                                        Supplier Name
-                                    </p>
+                    <div className="print-card rounded-2xl border bg-white p-5 shadow-sm">
+                        <p className="text-sm font-semibold text-slate-500">
+                            Total Paid
+                        </p>
 
-                                    <p className="mt-1 text-sm font-semibold text-slate-900">
-                                        {supplier.name}
-                                    </p>
-                                </div>
+                        <p className="mt-2 text-3xl font-bold text-green-600">
+                            ৳ {money(totalPaid)}
+                        </p>
 
-                                <div>
-                                    <p className="text-[10px] font-semibold uppercase text-slate-500">
-                                        Company
-                                    </p>
+                        <p className="mt-2 text-xs text-slate-400">
+                            Purchase-time Paid + Due Payment
+                        </p>
+                    </div>
 
-                                    <p className="mt-1 text-sm font-semibold text-slate-900">
-                                        {supplier.company ||
-                                            "-"}
-                                    </p>
-                                </div>
+                    {/* CURRENT DUE */}
 
-                                <div>
-                                    <p className="text-[10px] font-semibold uppercase text-slate-500">
-                                        Phone
-                                    </p>
+                    <div className="print-card rounded-2xl border bg-white p-5 shadow-sm">
+                        <p className="text-sm font-semibold text-slate-500">
+                            Current Due
+                        </p>
 
-                                    <p className="mt-1 text-sm font-semibold text-slate-900">
-                                        {supplier.phone}
-                                    </p>
-                                </div>
+                        <p className="mt-2 text-3xl font-bold text-red-600">
+                            ৳ {money(currentDue)}
+                        </p>
 
-                                <div>
-                                    <p className="text-[10px] font-semibold uppercase text-slate-500">
-                                        Email
-                                    </p>
+                        <p className="mt-2 text-xs text-slate-400">
+                            Remaining amount payable to supplier
+                        </p>
+                    </div>
+                </div>
 
-                                    <p className="mt-1 text-sm font-semibold text-slate-900">
-                                        {supplier.email ||
-                                            "-"}
-                                    </p>
-                                </div>
+                {/* =========================================
+                    PURCHASE HISTORY
+                ========================================== */}
 
-                                <div className="col-span-2">
-
-                                    <p className="text-[10px] font-semibold uppercase text-slate-500">
-                                        Address
-                                    </p>
-
-                                    <p className="mt-1 text-sm font-semibold text-slate-900">
-                                        {supplier.address ||
-                                            "-"}
-                                    </p>
-
-                                </div>
-
-                            </div>
-
-                        </div>
-
-                    </section>
-
-                    {/* ==================================================
-                        ACCOUNT SUMMARY
-                    ================================================== */}
-
-                    <section className="print-section mb-5">
-
-                        <h2 className="mb-2 text-sm font-bold uppercase tracking-wide text-slate-800">
-                            Account Summary
+                <div className="print-card print-section overflow-hidden rounded-2xl bg-white shadow-sm">
+                    <div className="border-b p-5">
+                        <h2 className="text-xl font-bold text-slate-800">
+                            🧾 Purchase History
                         </h2>
 
-                        <div className="print-summary grid gap-3 md:grid-cols-4">
+                        <p className="mt-1 text-sm text-slate-500">
+                            Purchase records and payment status
+                        </p>
+                    </div>
 
-                            <div className="print-box rounded-lg border border-orange-300 bg-orange-50 p-4">
-
-                                <p className="text-[10px] font-semibold uppercase text-slate-500">
-                                    Opening Due
-                                </p>
-
-                                <p className="mt-2 text-lg font-bold text-orange-600">
-                                    ৳ {money(openingDue)}
-                                </p>
-
-                            </div>
-
-                            <div className="print-box rounded-lg border border-slate-300 bg-slate-50 p-4">
-
-                                <p className="text-[10px] font-semibold uppercase text-slate-500">
-                                    Total Purchase
-                                </p>
-
-                                <p className="mt-2 text-lg font-bold text-slate-900">
-                                    ৳ {money(totalPurchase)}
-                                </p>
-
-                            </div>
-
-                            <div className="print-box rounded-lg border border-green-300 bg-green-50 p-4">
-
-                                <p className="text-[10px] font-semibold uppercase text-slate-500">
-                                    Total Paid
-                                </p>
-
-                                <p className="mt-2 text-lg font-bold text-green-600">
-                                    ৳ {money(totalPaid)}
-                                </p>
-
-                            </div>
-
-                            <div className="print-box rounded-lg border border-red-300 bg-red-50 p-4">
-
-                                <p className="text-[10px] font-semibold uppercase text-slate-500">
-                                    Current Due
-                                </p>
-
-                                <p className="mt-2 text-lg font-bold text-red-600">
-                                    ৳ {money(currentDue)}
-                                </p>
-
-                            </div>
-
-                        </div>
-
-                    </section>
-
-                    {/* ==================================================
-                        PURCHASE HISTORY
-                    ================================================== */}
-
-                    <section className="print-section mb-5">
-
-                        <div className="mb-2">
-
-                            <h2 className="text-sm font-bold uppercase tracking-wide text-slate-800">
-                                Purchase History
-                            </h2>
-
-                            <p className="text-xs text-slate-500">
-                                Products purchased from this
-                                supplier
-                            </p>
-
-                        </div>
-
-                        <table className="print-table w-full border-collapse">
-
-                            <thead>
-
+                    <div className="overflow-x-auto">
+                        <table className="w-full min-w-[750px]">
+                            <thead className="bg-slate-100">
                                 <tr>
-
-                                    <th className="text-left">
+                                    <th className="px-5 py-3 text-left text-sm">
                                         Date
                                     </th>
 
-                                    <th className="text-left">
+                                    <th className="px-5 py-3 text-left text-sm">
                                         Invoice
                                     </th>
 
-                                    <th className="text-right">
+                                    <th className="px-5 py-3 text-right text-sm">
                                         Total
                                     </th>
 
-                                    <th className="text-right">
+                                    <th className="px-5 py-3 text-right text-sm">
                                         Paid
                                     </th>
 
-                                    <th className="text-right">
+                                    <th className="px-5 py-3 text-right text-sm">
                                         Due
                                     </th>
-
                                 </tr>
-
                             </thead>
 
                             <tbody>
-
                                 {purchases.length === 0 ? (
-
                                     <tr>
-
                                         <td
                                             colSpan={5}
-                                            className="text-center"
+                                            className="py-8 text-center text-slate-400"
                                         >
-                                            No purchase
-                                            records found.
+                                            No purchase records found.
                                         </td>
-
                                     </tr>
-
                                 ) : (
-
                                     purchases.map(
-                                        (
-                                            purchase,
-                                            index
-                                        ) => (
+                                        (purchase, index) => {
+                                            const total =
+                                                Number(
+                                                    purchase.totalAmount ??
+                                                    purchase.total ??
+                                                    purchase.grandTotal ??
+                                                    0
+                                                );
 
-                                            <tr
-                                                key={
-                                                    purchase.id ||
-                                                    index
-                                                }
-                                            >
+                                            const paid =
+                                                Number(
+                                                    purchase.paidAmount || 0
+                                                );
 
-                                                <td>
-                                                    {formatDate(
-                                                        purchase.purchaseDate
-                                                    )}
-                                                </td>
+                                            const due =
+                                                Number(
+                                                    purchase.dueAmount || 0
+                                                );
 
-                                                <td className="font-semibold">
+                                            return (
+                                                <tr
+                                                    key={
+                                                        purchase.id ||
+                                                        index
+                                                    }
+                                                    className="border-t"
+                                                >
+                                                    <td className="px-5 py-4">
+                                                        {formatDate(
+                                                            purchase.purchaseDate
+                                                        )}
+                                                    </td>
 
-                                                    {purchase.invoiceNumber ||
-                                                        purchase.purchaseNumber ||
-                                                        purchase.invoiceNo ||
-                                                        `Purchase #${purchase.id}`}
+                                                    <td className="px-5 py-4 font-semibold">
+                                                        {purchase.invoiceNumber ||
+                                                            purchase.purchaseNumber ||
+                                                            purchase.invoiceNo ||
+                                                            `Purchase #${purchase.id}`}
+                                                    </td>
 
-                                                </td>
+                                                    <td className="px-5 py-4 text-right">
+                                                        ৳ {money(total)}
+                                                    </td>
 
-                                                <td className="text-right">
+                                                    <td className="px-5 py-4 text-right font-semibold text-green-600">
+                                                        ৳ {money(paid)}
+                                                    </td>
 
-                                                    ৳{" "}
-                                                    {money(
-                                                        purchase.totalAmount ??
-                                                        purchase.total ??
-                                                        purchase.grandTotal ??
-                                                        0
-                                                    )}
-
-                                                </td>
-
-                                                <td className="text-right">
-
-                                                    ৳{" "}
-                                                    {money(
-                                                        purchase.paidAmount ??
-                                                        0
-                                                    )}
-
-                                                </td>
-
-                                                <td className="text-right font-bold">
-
-                                                    ৳{" "}
-                                                    {money(
-                                                        purchase.dueAmount ??
-                                                        0
-                                                    )}
-
-                                                </td>
-
-                                            </tr>
-
-                                        )
+                                                    <td className="px-5 py-4 text-right font-bold text-red-600">
+                                                        ৳ {money(due)}
+                                                    </td>
+                                                </tr>
+                                            );
+                                        }
                                     )
-
                                 )}
-
                             </tbody>
-
                         </table>
+                    </div>
+                </div>
 
-                    </section>
+                {/* =========================================
+                    DUE PAYMENT HISTORY
+                ========================================== */}
 
-                    {/* ==================================================
-                        PAYMENT HISTORY
-                    ================================================== */}
+                <div className="print-card print-section overflow-hidden rounded-2xl bg-white shadow-sm">
+                    <div className="border-b p-5">
+                        <h2 className="text-xl font-bold text-slate-800">
+                            💸 Due Payment History
+                        </h2>
 
-                    <section className="print-section mb-5">
+                        <p className="mt-1 text-sm text-slate-500">
+                            Payments made later against outstanding supplier dues
+                        </p>
+                    </div>
 
-                        <div className="mb-2">
-
-                            <h2 className="text-sm font-bold uppercase tracking-wide text-slate-800">
-                                Payment History
-                            </h2>
-
-                            <p className="text-xs text-slate-500">
-                                Payments made to this supplier
-                            </p>
-
-                        </div>
-
-                        <table className="print-table w-full border-collapse">
-
-                            <thead>
-
+                    <div className="overflow-x-auto">
+                        <table className="w-full min-w-[750px]">
+                            <thead className="bg-slate-100">
                                 <tr>
-
-                                    <th className="text-left">
+                                    <th className="px-5 py-3 text-left text-sm">
                                         Date
                                     </th>
 
-                                    <th className="text-left">
+                                    <th className="px-5 py-3 text-left text-sm">
+                                        Payment
+                                    </th>
+
+                                    <th className="px-5 py-3 text-left text-sm">
                                         Payment Method
                                     </th>
 
-                                    <th className="text-right">
+                                    <th className="px-5 py-3 text-right text-sm">
                                         Amount
                                     </th>
 
-                                    <th className="text-left">
+                                    <th className="px-5 py-3 text-left text-sm">
                                         Note
                                     </th>
-
                                 </tr>
-
                             </thead>
 
                             <tbody>
-
-                                {payments.length === 0 ? (
-
+                                {duePayments.length === 0 ? (
                                     <tr>
-
                                         <td
-                                            colSpan={4}
-                                            className="text-center"
+                                            colSpan={5}
+                                            className="py-8 text-center text-slate-400"
                                         >
-                                            No payment
-                                            records found.
+                                            No due payment records found.
                                         </td>
-
                                     </tr>
-
                                 ) : (
-
-                                    payments.map(
-                                        (
-                                            payment,
-                                            index
-                                        ) => (
-
+                                    duePayments.map(
+                                        (payment, index) => (
                                             <tr
                                                 key={
                                                     payment.id ||
                                                     index
                                                 }
+                                                className="border-t"
                                             >
-
-                                                <td>
+                                                <td className="px-5 py-4">
                                                     {formatDate(
                                                         payment.paymentDate
                                                     )}
                                                 </td>
 
-                                                <td className="font-semibold">
-
-                                                    {
-                                                        payment.paymentMethod
-                                                    }
-
+                                                <td className="px-5 py-4">
+                                                    <span className="font-semibold text-green-700">
+                                                        Due Payment #
+                                                        {payment.id}
+                                                    </span>
                                                 </td>
 
-                                                <td className="text-right font-bold">
+                                                <td className="px-5 py-4">
+                                                    <span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-medium">
+                                                        {
+                                                            payment.paymentMethod
+                                                        }
+                                                    </span>
+                                                </td>
 
+                                                <td className="px-5 py-4 text-right font-bold text-green-600">
                                                     ৳{" "}
                                                     {money(
                                                         payment.amount
                                                     )}
+                                                </td>
+
+                                                <td className="px-5 py-4 text-slate-500">
+                                                    {payment.note || "-"}
+                                                </td>
+                                            </tr>
+                                        )
+                                    )
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+
+
+
+
+
+                {/* =========================================
+    PURCHASE RETURN HISTORY
+========================================== */}
+
+                <div className="print-card print-section overflow-hidden rounded-2xl bg-white shadow-sm">
+
+                    <div className="border-b p-5">
+
+                        <h2 className="text-xl font-bold text-slate-800">
+                            🔄 Purchase Return History
+                        </h2>
+
+                        <p className="mt-1 text-sm text-slate-500">
+                            Products returned to this supplier and corresponding financial adjustments
+                        </p>
+
+                    </div>
+
+                    <div className="overflow-x-auto">
+
+                        <table className="w-full min-w-[950px]">
+
+                            <thead className="bg-slate-100">
+
+                                <tr>
+
+                                    <th className="px-5 py-3 text-left text-sm">
+                                        Date
+                                    </th>
+
+                                    <th className="px-5 py-3 text-left text-sm">
+                                        Return #
+                                    </th>
+
+                                    <th className="px-5 py-3 text-left text-sm">
+                                        Purchase No
+                                    </th>
+
+                                    <th className="px-5 py-3 text-right text-sm">
+                                        Return Amount
+                                    </th>
+
+                                    <th className="px-5 py-3 text-right text-sm">
+                                        Cash Received
+                                    </th>
+
+                                    <th className="px-5 py-3 text-right text-sm">
+                                        Due Adjusted
+                                    </th>
+
+                                    <th className="px-5 py-3 text-left text-sm">
+                                        Reason
+                                    </th>
+
+                                </tr>
+
+                            </thead>
+
+                            <tbody>
+
+                                {purchaseReturns.length === 0 ? (
+
+                                    <tr>
+
+                                        <td
+                                            colSpan={7}
+                                            className="py-8 text-center text-slate-400"
+                                        >
+                                            No purchase return records found.
+                                        </td>
+
+                                    </tr>
+
+                                ) : (
+
+                                    purchaseReturns.map(
+                                        (purchaseReturn) => (
+
+                                            <tr
+                                                key={purchaseReturn.id}
+                                                className="border-t"
+                                            >
+
+                                                {/* DATE */}
+
+                                                <td className="px-5 py-4">
+
+                                                    {formatDate(
+                                                        purchaseReturn.returnDate
+                                                    )}
 
                                                 </td>
 
-                                                <td>
-                                                    {payment.note ||
-                                                        "-"}
+
+                                                {/* RETURN NUMBER */}
+
+                                                <td className="px-5 py-4">
+
+                                                    <span className="rounded-full bg-orange-100 px-3 py-1 text-sm font-semibold text-orange-700">
+
+                                                        Return #
+                                                        {purchaseReturn.id}
+
+                                                    </span>
+
+                                                </td>
+
+
+                                                {/* PURCHASE NUMBER */}
+
+                                                <td className="px-5 py-4 font-semibold">
+
+                                                    {purchaseReturn.purchase?.purchaseNo ||
+                                                        `Purchase #${purchaseReturn.purchaseId}`}
+
+                                                </td>
+
+
+                                                {/* RETURN AMOUNT */}
+
+                                                <td className="px-5 py-4 text-right font-bold text-orange-600">
+
+                                                    ৳{" "}
+                                                    {money(
+                                                        purchaseReturn.totalAmount
+                                                    )}
+
+                                                </td>
+
+
+                                                {/* CASH RECEIVED */}
+
+                                                <td className="px-5 py-4 text-right font-semibold text-green-600">
+
+                                                    ৳{" "}
+                                                    {money(
+                                                        purchaseReturn.cashReceived
+                                                    )}
+
+                                                </td>
+
+
+                                                {/* DUE ADJUSTED */}
+
+                                                <td className="px-5 py-4 text-right font-semibold text-blue-600">
+
+                                                    ৳{" "}
+                                                    {money(
+                                                        purchaseReturn.adjustedDue
+                                                    )}
+
+                                                </td>
+
+
+                                                {/* REASON */}
+
+                                                <td className="px-5 py-4 text-slate-500">
+
+                                                    {purchaseReturn.reason || "-"}
+
                                                 </td>
 
                                             </tr>
@@ -847,57 +1146,69 @@ export default function SupplierDetailsPage() {
 
                         </table>
 
-                    </section>
-
-                    {/* ==================================================
-                        STATEMENT FOOTER
-                    ================================================== */}
-
-                    <section className="print-section mt-10">
-
-                        <div className="grid grid-cols-2 gap-20">
-
-                            <div className="pt-8">
-
-                                <div className="border-t border-slate-700 pt-2 text-center">
-
-                                    <p className="text-xs font-semibold">
-                                        Prepared By
-                                    </p>
-
-                                </div>
-
-                            </div>
-
-                            <div className="pt-8">
-
-                                <div className="border-t border-slate-700 pt-2 text-center">
-
-                                    <p className="text-xs font-semibold">
-                                        Authorized Signature
-                                    </p>
-
-                                </div>
-
-                            </div>
-
-                        </div>
-
-                    </section>
-
-                    {/* ==================================================
-                        PRINT FOOTER
-                    ================================================== */}
-
-                    <div className="print-only mt-8 border-t border-slate-300 pt-3 text-center">
-
-                        <p className="text-[10px] text-slate-500">
-                            Supplier Account Statement •
-                            Agro Shop CRM
-                        </p>
-
                     </div>
 
+                </div>
+
+                {/* =========================================
+                    ACCOUNT RECONCILIATION
+                ========================================== */}
+
+                <div className="print-card print-section rounded-2xl border bg-slate-50 p-5">
+                    <h2 className="mb-4 text-lg font-bold text-slate-800">
+                        📊 Account Reconciliation
+                    </h2>
+
+                    <div className="space-y-2 text-sm">
+
+                        <div className="flex justify-between">
+                            <span>Total Purchase</span>
+
+                            <span className="font-semibold">
+                                ৳ {money(totalPurchase)}
+                            </span>
+                        </div>
+
+                        <div className="flex justify-between">
+                            <span>Purchase-time Paid</span>
+
+                            <span className="font-semibold text-blue-600">
+                                - ৳ {money(purchaseTimePaid)}
+                            </span>
+                        </div>
+
+                        <div className="flex justify-between">
+                            <span>Due Payment</span>
+
+                            <span className="font-semibold text-green-600">
+                                - ৳ {money(totalDuePayment)}
+                            </span>
+                        </div>
+
+                        <div className="border-t pt-3">
+                            <div className="flex justify-between text-base font-bold">
+                                <span>
+                                    Current Purchase Due
+                                </span>
+
+                                <span className="text-red-600">
+                                    ৳ {money(currentPurchaseDue)}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* =========================================
+                    FOOTER
+                ========================================== */}
+
+                <div className="border-t pt-5 text-center text-xs text-slate-400">
+                    <p>Supplier Account Statement</p>
+
+                    <p className="mt-1">
+                        Generated by Agro Shop CRM
+                    </p>
                 </div>
             </div>
         </>

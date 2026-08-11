@@ -110,8 +110,14 @@ model Purchase {
   purchaseDate DateTime
 
   totalAmount Decimal @db.Decimal(12, 2)
-  paidAmount  Decimal @db.Decimal(12, 2)
-  dueAmount   Decimal @db.Decimal(12, 2)
+
+  // Amount paid at the time of creating the purchase
+  initialPaidAmount Decimal @default(0) @db.Decimal(12, 2)
+
+  // Total amount paid so far
+  paidAmount Decimal @db.Decimal(12, 2)
+
+  dueAmount Decimal @db.Decimal(12, 2)
 
   note String?
 
@@ -123,6 +129,8 @@ model Purchase {
   batches ProductBatch[]
 
   purchaseReturns PurchaseReturn[]
+
+  supplierPaymentAllocations SupplierPaymentAllocation[]
 }
 
 model PurchaseItem {
@@ -299,6 +307,8 @@ model SupplierPayment {
   note String?
 
   createdAt DateTime @default(now())
+
+  allocations SupplierPaymentAllocation[]
 }
 
 model Damage {
@@ -496,4 +506,21 @@ model SalePayment {
 
   @@index([saleId])
   @@index([customerId])
+}
+
+model SupplierPaymentAllocation {
+  id Int @id @default(autoincrement())
+
+  supplierPaymentId Int
+  supplierPayment   SupplierPayment @relation(fields: [supplierPaymentId], references: [id], onDelete: Cascade)
+
+  purchaseId Int
+  purchase   Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+
+  amount Decimal @db.Decimal(12, 2)
+
+  createdAt DateTime @default(now())
+
+  @@index([supplierPaymentId])
+  @@index([purchaseId])
 }

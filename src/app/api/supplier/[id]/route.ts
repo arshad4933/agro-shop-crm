@@ -19,6 +19,27 @@ export async function GET(
         batches: true,
         purchases: true,
         supplierPayments: true,
+
+        purchaseReturns: {
+          orderBy: {
+            returnDate: "desc",
+          },
+
+          include: {
+            purchase: true,
+
+            items: {
+              include: {
+                batch: {
+                  include: {
+                    product: true,
+                  },
+                },
+                purchaseItem: true,
+              },
+            },
+          },
+        },
       },
     });
 

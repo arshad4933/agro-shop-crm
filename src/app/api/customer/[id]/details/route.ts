@@ -139,6 +139,8 @@ export async function GET(
             entry.balance = runningBalance;
 
         });
+
+
         return NextResponse.json({
             customer,
 

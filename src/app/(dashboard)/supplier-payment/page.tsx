@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import axios from "axios";
 import { toast } from "react-hot-toast";
 
@@ -54,7 +55,7 @@ export default function SupplierPaymentPage() {
         useState<SupplierPayment | null>(null);
 
     const [search, setSearch] = useState("");
-
+    const router = useRouter();
     const [form, setForm] = useState({
         supplierId: "",
         amount: "",
@@ -592,7 +593,17 @@ export default function SupplierPaymentPage() {
                                             >
                                                 ✏️
                                             </button>
-
+                                            <button
+                                                onClick={() =>
+                                                    router.push(
+                                                        `/supplier/${payment.supplierId}/ledger`
+                                                    )
+                                                }
+                                                className="mr-2 rounded-lg px-3 py-2 text-lg hover:bg-green-50"
+                                                title="Account Ledger"
+                                            >
+                                                📒
+                                            </button>
                                             <button
                                                 onClick={() =>
                                                     deletePayment(payment)
