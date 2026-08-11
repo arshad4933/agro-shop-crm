@@ -11,6 +11,9 @@ import SaleHeader from "@/components/sale/SaleHeader";
 import SaleForm from "@/components/sale/SaleForm";
 import SaleTable from "@/components/sale/SaleTable";
 import SaleList from "@/components/sale/SaleList";
+import SaleReturnModal from "@/components/sale/SaleReturnModal";
+
+
 export default function SalePage() {
 
 
@@ -25,6 +28,7 @@ export default function SalePage() {
 
     const [selectedSale, setSelectedSale] = useState<any>(null);
     const [viewSale, setViewSale] = useState<any>(null);
+    const [returnSale, setReturnSale] = useState<any>(null);
     const customerInvoiceRef = useRef<HTMLDivElement>(null);
     const [officeInvoice, setOfficeInvoice] = useState(false);
     const handleCustomerPrint = useReactToPrint({
@@ -138,18 +142,24 @@ export default function SalePage() {
             </div>
 
             <SaleList
-
                 sales={sales}
 
                 onView={(sale) => {
-
                     setViewSale(sale);
+                }}
 
+                onReturn={(sale) => {
+                    setReturnSale(sale);
                 }}
 
                 onDelete={deleteSale}
-
             />
+
+
+
+
+
+
 
             {open && (
 
@@ -636,6 +646,25 @@ export default function SalePage() {
 
                 </div>
 
+            )}
+
+
+            {returnSale && (
+                <SaleReturnModal
+                    sale={returnSale}
+
+                    onClose={() => {
+                        setReturnSale(null);
+                    }}
+
+                    onSuccess={async () => {
+                        setReturnSale(null);
+
+                        await loadSales();
+
+                        setViewSale(null);
+                    }}
+                />
             )}
 
 
