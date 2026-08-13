@@ -109,6 +109,47 @@ export default function SalePage() {
     }
 
 
+    const saleReturns = viewSale?.saleReturns ?? [];
+
+    const totalSaleReturn = saleReturns.reduce(
+        (sum: number, item: any) =>
+            sum + Number(item.totalAmount ?? 0),
+        0
+    );
+
+    const totalCashReturned = saleReturns.reduce(
+        (sum: number, item: any) =>
+            sum + Number(item.cashReturned ?? 0),
+        0
+    );
+
+    const totalDueAdjusted = saleReturns.reduce(
+        (sum: number, item: any) =>
+            sum + Number(item.adjustedDue ?? 0),
+        0
+    );
+
+    const currentSaleTotal = Number(
+        viewSale?.totalAmount ?? 0
+    );
+
+    const currentPaidAmount = Number(
+        viewSale?.paidAmount ?? 0
+    );
+
+    const currentDueAmount = Number(
+        viewSale?.dueAmount ?? 0
+    );
+
+    const originalSaleTotal =
+        currentSaleTotal + totalSaleReturn;
+
+    const originalPaidAmount =
+        currentPaidAmount + totalCashReturned;
+
+    const originalDueAmount =
+        currentDueAmount + totalDueAdjusted;
+
     return (
 
         <div className="space-y-6">
@@ -144,8 +185,19 @@ export default function SalePage() {
             <SaleList
                 sales={sales}
 
-                onView={(sale) => {
-                    setViewSale(sale);
+                onView={async (sale) => {
+                    try {
+                        const response = await axios.get(
+                            `/api/sale/${sale.id}`
+                        );
+
+                        setViewSale(response.data);
+                    } catch (error) {
+                        console.error(error);
+                        toast.error(
+                            "Failed to load invoice details"
+                        );
+                    }
                 }}
 
                 onReturn={(sale) => {
@@ -512,61 +564,144 @@ export default function SalePage() {
                             <div className="w-96 rounded-xl border bg-slate-50 p-5">
 
                                 <div className="mb-2 flex justify-between">
-
-                                    <span>Grand Total</span>
-
+                                    <span>Original Sale Total</span>
                                     <span className="font-semibold">
-
-                                        ৳ {viewSale.totalAmount}
-
+                                        ৳ {originalSaleTotal.toFixed(2)}
                                     </span>
+                                </div>
 
+                                {totalSaleReturn > 0 && (
+                                    <div className="mb-2 flex justify-between text-orange-700">
+                                        <span>Total Sale Return</span>
+                                        <span className="font-semibold">
+                                            - ৳ {totalSaleReturn.toFixed(2)}
+                                        </span>
+                                    </div>
+                                )}
+
+                                <div className="mb-2 flex justify-between">
+                                    <span>Current / Net Sale</span>
+                                    <span className="font-semibold">
+                                        ৳ {currentSaleTotal.toFixed(2)}
+                                    </span>
                                 </div>
 
                                 <div className="mb-2 flex justify-between">
-
                                     <span>Discount</span>
-
                                     <span>
-
-                                        ৳ {viewSale.discount}
-
+                                        ৳ {Number(viewSale.discount ?? 0).toFixed(2)}
                                     </span>
-
                                 </div>
 
                                 <div className="mb-2 flex justify-between">
-
-                                    <span>Paid</span>
-
-                                    <span className="text-green-600 font-semibold">
-
-                                        ৳ {viewSale.paidAmount}
-
+                                    <span>Original Paid</span>
+                                    <span className="font-semibold text-green-600">
+                                        ৳ {originalPaidAmount.toFixed(2)}
                                     </span>
+                                </div>
 
+                                {totalCashReturned > 0 && (
+                                    <div className="mb-2 flex justify-between text-orange-700">
+                                        <span>Cash Returned</span>
+                                        <span>
+                                            - ৳ {totalCashReturned.toFixed(2)}
+                                        </span>
+                                    </div>
+                                )}
+
+                                {totalDueAdjusted > 0 && (
+                                    <div className="mb-2 flex justify-between text-blue-700">
+                                        <span>Due Adjusted</span>
+                                        <span>
+                                            - ৳ {totalDueAdjusted.toFixed(2)}
+                                        </span>
+                                    </div>
+                                )}
+
+                                <div className="mb-2 flex justify-between">
+                                    <span>Current Paid</span>
+                                    <span className="font-semibold text-green-600">
+                                        ৳ {currentPaidAmount.toFixed(2)}
+                                    </span>
                                 </div>
 
                                 <hr className="my-3" />
 
                                 <div className="flex justify-between text-lg font-bold text-red-600">
-
-                                    <span>Due</span>
-
+                                    <span>Current Due</span>
                                     <span>
-
-                                        ৳ {viewSale.dueAmount}
-
+                                        ৳ {currentDueAmount.toFixed(2)}
                                     </span>
-
                                 </div>
+
+                                {saleReturns.length > 0 && (
+                                    <div className="mt-2 flex justify-between text-sm text-slate-500">
+                                        <span>Original Due</span>
+                                        <span>
+                                            ৳ {originalDueAmount.toFixed(2)}
+                                        </span>
+                                    </div>
+                                )}
 
                             </div>
 
                         </div>
 
+                        {/* ================================= */}
+                        {/* SALE RETURN HISTORY */}
+                        {/* ================================= */}
 
+                        <div className="mt-8 rounded-xl border bg-white p-6">
+                            <div className="mb-4">
+                                <h3 className="text-lg font-bold text-slate-800">
+                                    🔄 Sale Return History
+                                </h3>
+                                <p className="mt-1 text-sm text-slate-500">
+                                    এই invoice থেকে করা সব return এখানে দেখা যাবে।
+                                </p>
+                            </div>
 
+                            {saleReturns.length === 0 ? (
+                                <div className="rounded-xl border border-dashed bg-slate-50 p-6 text-center text-slate-500">
+                                    এই sale থেকে এখনো কোনো return করা হয়নি।
+                                </div>
+                            ) : (
+                                <div className="overflow-x-auto rounded-xl border">
+                                    <table className="min-w-full">
+                                        <thead className="bg-orange-50">
+                                            <tr>
+                                                <th className="border-b px-4 py-3 text-left">Date</th>
+                                                <th className="border-b px-4 py-3 text-right">Return Amount</th>
+                                                <th className="border-b px-4 py-3 text-right">Cash Returned</th>
+                                                <th className="border-b px-4 py-3 text-right">Due Adjusted</th>
+                                                <th className="border-b px-4 py-3 text-left">Reason</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {saleReturns.map((saleReturn: any) => (
+                                                <tr key={saleReturn.id} className="border-t">
+                                                    <td className="px-4 py-3">
+                                                        {new Date(saleReturn.returnDate).toLocaleDateString("en-BD")}
+                                                    </td>
+                                                    <td className="px-4 py-3 text-right font-semibold text-orange-700">
+                                                        ৳ {Number(saleReturn.totalAmount ?? 0).toFixed(2)}
+                                                    </td>
+                                                    <td className="px-4 py-3 text-right text-green-700">
+                                                        ৳ {Number(saleReturn.cashReturned ?? 0).toFixed(2)}
+                                                    </td>
+                                                    <td className="px-4 py-3 text-right text-blue-700">
+                                                        ৳ {Number(saleReturn.adjustedDue ?? 0).toFixed(2)}
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        {saleReturn.reason || "-"}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                        </div>
 
                     </div>
 
@@ -662,7 +797,17 @@ export default function SalePage() {
 
                         await loadSales();
 
-                        setViewSale(null);
+                        if (viewSale?.id) {
+                            try {
+                                const response = await axios.get(
+                                    `/api/sale/${viewSale.id}`
+                                );
+
+                                setViewSale(response.data);
+                            } catch (error) {
+                                console.error(error);
+                            }
+                        }
                     }}
                 />
             )}
