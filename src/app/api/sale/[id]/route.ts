@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
-// =======================
+// ======================================
 // GET SALE BY ID
-// =======================
+// ======================================
+
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -30,7 +31,15 @@ export async function GET(
       },
 
       include: {
+        // ======================================
+        // CUSTOMER
+        // ======================================
+
         customer: true,
+
+        // ======================================
+        // SALE ITEMS
+        // ======================================
 
         items: {
           include: {
@@ -45,6 +54,30 @@ export async function GET(
             },
           },
         },
+
+        // ======================================
+        // SALE PAYMENTS
+        // ======================================
+
+        salePayments: {
+          orderBy: {
+            paymentDate: "asc",
+          },
+        },
+
+        // ======================================
+        // CUSTOMER PAYMENTS
+        // ======================================
+
+        payments: {
+          orderBy: {
+            paymentDate: "asc",
+          },
+        },
+
+        // ======================================
+        // SALE RETURNS
+        // ======================================
 
         saleReturns: {
           orderBy: {
@@ -65,20 +98,12 @@ export async function GET(
             },
           },
         },
-
-        salePayments: {
-          orderBy: {
-            paymentDate: "asc",
-          },
-        },
-
-        payments: {
-          orderBy: {
-            paymentDate: "asc",
-          },
-        },
       },
     });
+
+    // ======================================
+    // SALE NOT FOUND
+    // ======================================
 
     if (!sale) {
       return NextResponse.json(
@@ -91,54 +116,213 @@ export async function GET(
       );
     }
 
-    // ============================================================
-    // RETURN HISTORY TOTAL
-    // ============================================================
+    // ======================================
+    // RETURN SUMMARY
+    // ======================================
 
-    const totalReturnedAmount = sale.saleReturns.reduce(
+    const totalReturned = sale.saleReturns.reduce(
       (sum, saleReturn) => {
-        return sum + Number(saleReturn.totalAmount ?? 0);
+        return (
+          sum +
+          Number(saleReturn.totalAmount ?? 0)
+        );
       },
       0
     );
 
     const totalCashReturned = sale.saleReturns.reduce(
       (sum, saleReturn) => {
-        return sum + Number(saleReturn.cashReturned ?? 0);
+        return (
+          sum +
+          Number(saleReturn.cashReturned ?? 0)
+        );
       },
       0
     );
 
     const totalDueAdjusted = sale.saleReturns.reduce(
       (sum, saleReturn) => {
-        return sum + Number(saleReturn.adjustedDue ?? 0);
+        return (
+          sum +
+          Number(saleReturn.adjustedDue ?? 0)
+        );
       },
       0
     );
 
-    // Sale.totalAmount is current amount after return.
-    // Original sale = current amount + all returns.
-    const originalTotalAmount =
-      Number(sale.totalAmount ?? 0) +
-      totalReturnedAmount;
+    // ======================================
+    // CURRENT SALE VALUES
+    // ======================================
+
+    const currentSaleAmount = Number(
+      sale.totalAmount ?? 0
+    );
+
+    const currentPaidAmount = Number(
+      sale.paidAmount ?? 0
+    );
+
+    const currentDueAmount = Number(
+      sale.dueAmount ?? 0
+    );
+
+    // ======================================
+    // ORIGINAL SALE TOTAL
+    // ======================================
+    //
+    // If older return logic reduced
+    // sale.totalAmount, reconstruct original
+    // invoice total by adding returns back.
+    //
+    // Example:
+    //
+    // Current Sale = 200
+    // Returned     = 200
+    //
+    // Original Sale = 400
+    //
+    // ======================================
+
+    const originalSaleAmount =
+      currentSaleAmount +
+      totalReturned;
+
+    // ======================================
+    // ORIGINAL PAID
+    // ======================================
+    //
+    // If return reduced paidAmount because
+    // cash was refunded, add the refunded cash
+    // back to recover the original paid amount.
+    //
+    // ======================================
 
     const originalPaidAmount =
-      Number(sale.paidAmount ?? 0) +
+      currentPaidAmount +
       totalCashReturned;
 
+    // ======================================
+    // ORIGINAL DUE
+    // ======================================
+    //
+    // If return adjusted the customer's due,
+    // add the adjustment back.
+    //
+    // ======================================
+
     const originalDueAmount =
-      Number(sale.dueAmount ?? 0) +
+      currentDueAmount +
       totalDueAdjusted;
+
+    // ======================================
+    // NET SALE AMOUNT
+    // ======================================
+    //
+    // Original Invoice
+    //       -
+    // Total Returned
+    //       =
+    // Current Net Sale
+    //
+    // Example:
+    //
+    // Original = 400
+    // Return   = 200
+    // Net      = 200
+    //
+    // ======================================
+
+    const netSaleAmount =
+      originalSaleAmount -
+      totalReturned;
+
+    // ======================================
+    // SALE ITEMS + RETURN INFORMATION
+    // ======================================
+    //
+    // For every sale item we calculate:
+    //
+    // alreadyReturned
+    // remainingToReturn
+    //
+    // This allows frontend to know exactly
+    // how much quantity can still be returned.
+    //
+    // ======================================
+
+    const itemsWithReturnInfo =
+      sale.items.map((saleItem) => {
+        const alreadyReturned =
+          sale.saleReturns.reduce(
+            (sum, saleReturn) => {
+              const itemReturned =
+                saleReturn.items
+                  .filter(
+                    (returnItem) =>
+                      returnItem.saleItemId ===
+                      saleItem.id
+                  )
+                  .reduce(
+                    (
+                      itemSum,
+                      returnItem
+                    ) => {
+                      return (
+                        itemSum +
+                        Number(
+                          returnItem.quantity ?? 0
+                        )
+                      );
+                    },
+                    0
+                  );
+
+              return (
+                sum +
+                itemReturned
+              );
+            },
+            0
+          );
+
+        const remainingToReturn =
+          Math.max(
+            0,
+            Number(saleItem.quantity) -
+            alreadyReturned
+          );
+
+        return {
+          ...saleItem,
+
+          // Quantity already returned
+          alreadyReturned,
+
+          // Quantity still available
+          // for future return
+          remainingToReturn,
+        };
+      });
+
+    // ======================================
+    // RESPONSE
+    // ======================================
 
     return NextResponse.json({
       ...sale,
 
-      // ============================================================
-      // ORIGINAL / HISTORICAL VALUES
-      // ============================================================
+      // ======================================
+      // SALE ITEMS WITH RETURN INFORMATION
+      // ======================================
+
+      items: itemsWithReturnInfo,
+
+      // ======================================
+      // ORIGINAL INVOICE VALUES
+      // ======================================
 
       originalTotalAmount: Number(
-        originalTotalAmount.toFixed(2)
+        originalSaleAmount.toFixed(2)
       ),
 
       originalPaidAmount: Number(
@@ -149,28 +333,73 @@ export async function GET(
         originalDueAmount.toFixed(2)
       ),
 
+      // ======================================
+      // CURRENT SALE VALUES
+      // ======================================
+
+      currentTotalAmount: Number(
+        currentSaleAmount.toFixed(2)
+      ),
+
+      currentPaidAmount: Number(
+        currentPaidAmount.toFixed(2)
+      ),
+
+      currentDueAmount: Number(
+        currentDueAmount.toFixed(2)
+      ),
+
+      // ======================================
+      // NET SALE AFTER RETURNS
+      // ======================================
+
+      netSaleAmount: Number(
+        Math.max(
+          0,
+          netSaleAmount
+        ).toFixed(2)
+      ),
+
+      // ======================================
+      // RETURN SUMMARY
+      // ======================================
+
       returnSummary: {
-        totalReturnedAmount: Number(
-          totalReturnedAmount.toFixed(2)
+        // Total value of returned products
+        totalReturned: Number(
+          totalReturned.toFixed(2)
         ),
 
+        // Total cash refunded
         totalCashReturned: Number(
           totalCashReturned.toFixed(2)
         ),
 
+        // Total customer due adjusted
         totalDueAdjusted: Number(
           totalDueAdjusted.toFixed(2)
         ),
 
-        returnCount: sale.saleReturns.length,
+        // Number of return transactions
+        returnCount:
+          sale.saleReturns.length,
       },
     });
   } catch (error) {
-    console.error("GET SALE BY ID ERROR:", error);
+    console.error(
+      "Sale GET error:",
+      error
+    );
 
     return NextResponse.json(
       {
-        message: "Failed to fetch sale",
+        message:
+          "Failed to fetch sale",
+
+        error:
+          error instanceof Error
+            ? error.message
+            : String(error),
       },
       {
         status: 500,
@@ -179,9 +408,10 @@ export async function GET(
   }
 }
 
-// =======================
+// ======================================
 // DELETE SALE
-// =======================
+// ======================================
+
 export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -190,6 +420,10 @@ export async function DELETE(
     const { id } = await params;
 
     const saleId = Number(id);
+
+    // ======================================
+    // VALIDATE SALE ID
+    // ======================================
 
     if (!Number.isInteger(saleId)) {
       return NextResponse.json(
@@ -202,126 +436,252 @@ export async function DELETE(
       );
     }
 
-    const result = await prisma.$transaction(async (tx) => {
-      const sale = await tx.sale.findUnique({
-        where: {
-          id: saleId,
-        },
+    // ======================================
+    // TRANSACTION
+    // ======================================
 
-        include: {
-          items: true,
+    const result =
+      await prisma.$transaction(
+        async (tx) => {
+          // ======================================
+          // FIND SALE
+          // ======================================
 
-          saleReturns: {
-            include: {
-              items: true,
-            },
-          },
-        },
-      });
+          const sale =
+            await tx.sale.findUnique({
+              where: {
+                id: saleId,
+              },
 
-      if (!sale) {
-        throw new Error("Sale not found");
-      }
+              include: {
+                items: true,
 
-      // ============================================================
-      // RESTORE STOCK
-      // ============================================================
+                saleReturns: {
+                  include: {
+                    items: true,
+                  },
+                },
+              },
+            });
 
-      for (const item of sale.items) {
-        const batch = await tx.productBatch.findUnique({
-          where: {
-            id: item.batchId,
-          },
-        });
+          // ======================================
+          // SALE NOT FOUND
+          // ======================================
 
-        if (batch) {
-          await tx.productBatch.update({
+          if (!sale) {
+            throw new Error(
+              "Sale not found"
+            );
+          }
+
+          // ======================================
+          // RESTORE STOCK
+          // ======================================
+          //
+          // First determine how much quantity
+          // was originally sold.
+          //
+          // Then subtract quantities that were
+          // already returned to stock.
+          //
+          // This prevents double restoration.
+          //
+          // Example:
+          //
+          // Sold       = 10
+          // Returned   = 4
+          //
+          // When deleting sale:
+          //
+          // Restore = 10 - 4 = 6
+          //
+          // The 4 returned earlier already exists
+          // in stock.
+          //
+          // ======================================
+
+          for (
+            const item of sale.items
+          ) {
+            const batch =
+              await tx.productBatch.findUnique({
+                where: {
+                  id: item.batchId,
+                },
+              });
+
+            if (!batch) {
+              continue;
+            }
+
+            // ====================================
+            // ALREADY RETURNED QUANTITY
+            // ====================================
+
+            const returnedQuantity =
+              sale.saleReturns.reduce(
+                (
+                  total,
+                  saleReturn
+                ) => {
+                  const returnedForThisItem =
+                    saleReturn.items
+                      .filter(
+                        (returnItem) =>
+                          returnItem.saleItemId ===
+                          item.id
+                      )
+                      .reduce(
+                        (
+                          itemTotal,
+                          returnItem
+                        ) => {
+                          return (
+                            itemTotal +
+                            Number(
+                              returnItem.quantity ??
+                              0
+                            )
+                          );
+                        },
+                        0
+                      );
+
+                  return (
+                    total +
+                    returnedForThisItem
+                  );
+                },
+                0
+              );
+
+            // ====================================
+            // QUANTITY TO RESTORE
+            // ====================================
+
+            const quantityToRestore =
+              Math.max(
+                0,
+                Number(item.quantity) -
+                returnedQuantity
+              );
+
+            // ====================================
+            // RESTORE STOCK
+            // ====================================
+
+            if (
+              quantityToRestore > 0
+            ) {
+              await tx.productBatch.update({
+                where: {
+                  id: batch.id,
+                },
+
+                data: {
+                  quantityRemaining: {
+                    increment:
+                      quantityToRestore,
+                  },
+                },
+              });
+            }
+          }
+
+          // ======================================
+          // DELETE SALE RETURN ITEMS
+          // ======================================
+
+          for (
+            const saleReturn of
+            sale.saleReturns
+          ) {
+            await tx.saleReturnItem.deleteMany({
+              where: {
+                saleReturnId:
+                  saleReturn.id,
+              },
+            });
+          }
+
+          // ======================================
+          // DELETE SALE RETURNS
+          // ======================================
+
+          await tx.saleReturn.deleteMany({
             where: {
-              id: batch.id,
-            },
-
-            data: {
-              quantityRemaining:
-                batch.quantityRemaining + item.quantity,
+              saleId: sale.id,
             },
           });
+
+          // ======================================
+          // DELETE SALE PAYMENTS
+          // ======================================
+
+          await tx.salePayment.deleteMany({
+            where: {
+              saleId: sale.id,
+            },
+          });
+
+          // ======================================
+          // DELETE CUSTOMER PAYMENTS
+          // ======================================
+
+          await tx.customerPayment.deleteMany({
+            where: {
+              saleId: sale.id,
+            },
+          });
+
+          // ======================================
+          // DELETE SALE ITEMS
+          // ======================================
+
+          await tx.saleItem.deleteMany({
+            where: {
+              saleId: sale.id,
+            },
+          });
+
+          // ======================================
+          // DELETE SALE
+          // ======================================
+
+          await tx.sale.delete({
+            where: {
+              id: sale.id,
+            },
+          });
+
+          // ======================================
+          // RESULT
+          // ======================================
+
+          return {
+            message:
+              "Sale deleted successfully",
+          };
         }
-      }
+      );
 
-      // ============================================================
-      // DELETE SALE RETURN ITEMS
-      // ============================================================
+    // ======================================
+    // SUCCESS RESPONSE
+    // ======================================
 
-      for (const saleReturn of sale.saleReturns) {
-        await tx.saleReturnItem.deleteMany({
-          where: {
-            saleReturnId: saleReturn.id,
-          },
-        });
-      }
-
-      // ============================================================
-      // DELETE SALE RETURNS
-      // ============================================================
-
-      await tx.saleReturn.deleteMany({
-        where: {
-          saleId: sale.id,
-        },
-      });
-
-      // ============================================================
-      // DELETE SALE PAYMENTS
-      // ============================================================
-
-      await tx.salePayment.deleteMany({
-        where: {
-          saleId: sale.id,
-        },
-      });
-
-      // ============================================================
-      // DELETE CUSTOMER PAYMENTS
-      // ============================================================
-
-      await tx.customerPayment.deleteMany({
-        where: {
-          saleId: sale.id,
-        },
-      });
-
-      // ============================================================
-      // DELETE SALE ITEMS
-      // ============================================================
-
-      await tx.saleItem.deleteMany({
-        where: {
-          saleId: sale.id,
-        },
-      });
-
-      // ============================================================
-      // DELETE SALE
-      // ============================================================
-
-      await tx.sale.delete({
-        where: {
-          id: sale.id,
-        },
-      });
-
-      return {
-        message: "Sale deleted successfully",
-      };
-    });
-
-    return NextResponse.json(result);
+    return NextResponse.json(
+      result
+    );
   } catch (error: unknown) {
-    console.error("DELETE SALE ERROR:", error);
+    console.error(
+      "Sale DELETE error:",
+      error
+    );
 
     return NextResponse.json(
       {
-        message: "Failed to delete sale",
+        message:
+          "Failed to delete sale",
 
         error:
           error instanceof Error

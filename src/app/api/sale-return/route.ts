@@ -7,33 +7,49 @@ import { prisma } from "@/lib/prisma";
 
 export async function GET() {
     try {
-        const returns = await prisma.saleReturn.findMany({
-            include: {
-                customer: true,
-                sale: true,
-                items: {
-                    include: {
-                        batch: {
-                            include: {
-                                product: true,
+        const returns =
+            await prisma.saleReturn.findMany({
+                include: {
+                    customer: true,
+
+                    sale: true,
+
+                    items: {
+                        include: {
+                            batch: {
+                                include: {
+                                    product: true,
+                                },
                             },
+
+                            saleItem: true,
                         },
-                        saleItem: true,
                     },
                 },
-            },
-            orderBy: {
-                id: "desc",
-            },
-        });
 
-        return NextResponse.json(returns);
+                orderBy: {
+                    id: "desc",
+                },
+            });
+
+        return NextResponse.json(
+            returns
+        );
     } catch (error) {
-        console.error("Sale Return GET error:", error);
+        console.error(
+            "Sale Return GET error:",
+            error
+        );
 
         return NextResponse.json(
             {
-                message: "Failed to fetch sale returns",
+                message:
+                    "Failed to fetch sale returns",
+
+                error:
+                    error instanceof Error
+                        ? error.message
+                        : String(error),
             },
             {
                 status: 500,
@@ -46,9 +62,12 @@ export async function GET() {
 // CREATE SALE RETURN
 // ======================================
 
-export async function POST(request: Request) {
+export async function POST(
+    request: Request
+) {
     try {
-        const body = await request.json();
+        const body =
+            await request.json();
 
         const {
             saleId,
@@ -59,6 +78,10 @@ export async function POST(request: Request) {
             reason,
             items,
         } = body;
+
+        // ======================================
+        // VALIDATION
+        // ======================================
 
         if (
             !saleId ||
@@ -78,378 +101,588 @@ export async function POST(request: Request) {
             );
         }
 
-        const result = await prisma.$transaction(async (tx) => {
+        const result =
+            await prisma.$transaction(
+                async (tx) => {
+                    // ======================================
+                    // FIND SALE
+                    // ======================================
 
-            // ======================================
-            // FIND SALE
-            // ======================================
+                    const sale =
+                        await tx.sale.findUnique({
+                            where: {
+                                id: Number(saleId),
+                            },
 
-            const sale = await tx.sale.findUnique({
-                where: {
-                    id: Number(saleId),
-                },
-            });
+                            include: {
+                                items: true,
 
-            if (!sale) {
-                throw new Error("Sale not found");
-            }
+                                saleReturns: {
+                                    include: {
+                                        items: true,
+                                    },
+                                },
+                            },
+                        });
 
-            // Customer validation
-            if (sale.customerId !== Number(customerId)) {
-                throw new Error(
-                    "Selected customer does not belong to this sale"
-                );
-            }
+                    if (!sale) {
+                        throw new Error(
+                            "Sale not found"
+                        );
+                    }
 
-            let totalReturnAmount = 0;
+                    // ======================================
+                    // CUSTOMER VALIDATION
+                    // ======================================
 
-            const returnItems: {
-                saleItemId: number;
-                batchId: number;
-                quantity: number;
-                buyPrice: number;
-                sellPrice: number;
-                totalPrice: number;
-                profitReduced: number;
-            }[] = [];
+                    if (
+                        sale.customerId !==
+                        Number(customerId)
+                    ) {
+                        throw new Error(
+                            "Selected customer does not belong to this sale"
+                        );
+                    }
 
-            // ======================================
-            // PROCESS RETURN ITEMS
-            // ======================================
+                    // ======================================
+                    // RETURN VARIABLES
+                    // ======================================
 
-            for (const item of items) {
+                    let totalReturnAmount = 0;
 
-                const saleItemId = Number(item.saleItemId);
-                const qty = Number(item.quantity);
+                    const returnItems: {
+                        saleItemId: number;
+                        batchId: number;
+                        quantity: number;
+                        buyPrice: number;
+                        sellPrice: number;
+                        totalPrice: number;
+                        profitReduced: number;
+                    }[] = [];
 
-                if (!Number.isInteger(saleItemId)) {
-                    throw new Error("Invalid Sale Item ID");
-                }
+                    // ======================================
+                    // PROCESS RETURN ITEMS
+                    // ======================================
 
-                if (!Number.isInteger(qty) || qty <= 0) {
-                    throw new Error("Invalid return quantity");
-                }
+                    for (
+                        const item of items
+                    ) {
+                        const saleItemId =
+                            Number(
+                                item.saleItemId
+                            );
 
-                const saleItem = await tx.saleItem.findUnique({
-                    where: {
-                        id: saleItemId,
-                    },
-                    include: {
-                        batch: true,
-                    },
-                });
+                        const qty =
+                            Number(
+                                item.quantity
+                            );
 
-                if (!saleItem) {
-                    throw new Error(
-                        `Sale Item ${saleItemId} not found`
-                    );
-                }
+                        // ====================================
+                        // VALIDATE SALE ITEM ID
+                        // ====================================
 
-                if (saleItem.saleId !== sale.id) {
-                    throw new Error(
-                        "Sale Item does not belong to this sale"
-                    );
-                }
+                        if (
+                            !Number.isInteger(
+                                saleItemId
+                            )
+                        ) {
+                            throw new Error(
+                                "Invalid Sale Item ID"
+                            );
+                        }
 
-                // ======================================
-                // PREVIOUSLY RETURNED QUANTITY
-                // ======================================
+                        // ====================================
+                        // VALIDATE QUANTITY
+                        // ====================================
 
-                const previousReturns =
-                    await tx.saleReturnItem.aggregate({
+                        if (
+                            !Number.isInteger(
+                                qty
+                            ) ||
+                            qty <= 0
+                        ) {
+                            throw new Error(
+                                "Invalid return quantity"
+                            );
+                        }
+
+                        // ====================================
+                        // FIND SALE ITEM
+                        // ====================================
+
+                        const saleItem =
+                            await tx.saleItem.findUnique(
+                                {
+                                    where: {
+                                        id: saleItemId,
+                                    },
+
+                                    include: {
+                                        batch: true,
+                                    },
+                                }
+                            );
+
+                        if (!saleItem) {
+                            throw new Error(
+                                `Sale Item ${saleItemId} not found`
+                            );
+                        }
+
+                        // ====================================
+                        // SALE OWNERSHIP CHECK
+                        // ====================================
+
+                        if (
+                            saleItem.saleId !==
+                            sale.id
+                        ) {
+                            throw new Error(
+                                "Sale Item does not belong to this sale"
+                            );
+                        }
+
+                        // ====================================
+                        // PREVIOUS RETURN QUANTITY
+                        // ====================================
+
+                        const previousReturns =
+                            await tx.saleReturnItem.aggregate(
+                                {
+                                    where: {
+                                        saleItemId:
+                                            saleItem.id,
+                                    },
+
+                                    _sum: {
+                                        quantity: true,
+                                    },
+                                }
+                            );
+
+                        const alreadyReturned =
+                            Number(
+                                previousReturns
+                                    ._sum.quantity ??
+                                0
+                            );
+
+                        // ====================================
+                        // AVAILABLE RETURN QUANTITY
+                        // ====================================
+
+                        const availableToReturn =
+                            Number(
+                                saleItem.quantity
+                            ) -
+                            alreadyReturned;
+
+                        if (
+                            availableToReturn <=
+                            0
+                        ) {
+                            throw new Error(
+                                `All quantity for this item has already been returned`
+                            );
+                        }
+
+                        if (
+                            qty >
+                            availableToReturn
+                        ) {
+                            throw new Error(
+                                `Cannot return ${qty}. Only ${availableToReturn} remaining quantity can be returned`
+                            );
+                        }
+
+                        // ====================================
+                        // PRICE CALCULATION
+                        // ====================================
+
+                        const sellPrice =
+                            Number(
+                                saleItem.sellPrice
+                            );
+
+                        const buyPrice =
+                            Number(
+                                saleItem.buyPrice
+                            );
+
+                        const totalPrice =
+                            qty *
+                            sellPrice;
+
+                        const profitReduced =
+                            qty *
+                            (sellPrice -
+                                buyPrice);
+
+                        totalReturnAmount +=
+                            totalPrice;
+
+                        // ====================================
+                        // STORE RETURN ITEM
+                        // ====================================
+
+                        returnItems.push({
+                            saleItemId:
+                                saleItem.id,
+
+                            batchId:
+                                saleItem.batchId,
+
+                            quantity:
+                                qty,
+
+                            buyPrice,
+
+                            sellPrice,
+
+                            totalPrice,
+
+                            profitReduced,
+                        });
+
+                        // ====================================
+                        // RESTORE STOCK
+                        // ====================================
+
+                        await tx.productBatch.update(
+                            {
+                                where: {
+                                    id:
+                                        saleItem.batchId,
+                                },
+
+                                data: {
+                                    quantityRemaining: {
+                                        increment:
+                                            qty,
+                                    },
+                                },
+                            }
+                        );
+                    }
+
+                    // ======================================
+                    // CASH / DUE
+                    // ======================================
+
+                    const cashRefund =
+                        Number(
+                            cashReturned ?? 0
+                        );
+
+                    const dueAdjustment =
+                        Number(
+                            adjustedDue ?? 0
+                        );
+
+                    // ======================================
+                    // NEGATIVE VALIDATION
+                    // ======================================
+
+                    if (
+                        cashRefund < 0 ||
+                        dueAdjustment < 0
+                    ) {
+                        throw new Error(
+                            "Cash Returned and Adjusted Due cannot be negative"
+                        );
+                    }
+
+                    // ======================================
+                    // RETURN AMOUNT MUST BE FULLY ALLOCATED
+                    // ======================================
+
+                    const allocationTotal =
+                        cashRefund +
+                        dueAdjustment;
+
+                    if (
+                        Math.abs(
+                            allocationTotal -
+                            totalReturnAmount
+                        ) > 0.01
+                    ) {
+                        throw new Error(
+                            `Return amount ৳${totalReturnAmount.toFixed(
+                                2
+                            )} must equal Cash Returned + Adjusted Due`
+                        );
+                    }
+
+                    // ======================================
+                    // CURRENT PAYMENT STATE
+                    // ======================================
+                    //
+                    // We use current paid/due only for
+                    // validation.
+                    //
+                    // Historical payment records are NOT
+                    // modified.
+                    //
+                    // ======================================
+
+                    const currentPaidAmount =
+                        Number(
+                            sale.paidAmount ?? 0
+                        );
+
+                    const currentDueAmount =
+                        Number(
+                            sale.dueAmount ?? 0
+                        );
+
+                    // ======================================
+                    // CASH REFUND VALIDATION
+                    // ======================================
+
+                    if (
+                        cashRefund >
+                        currentPaidAmount +
+                        0.01
+                    ) {
+                        throw new Error(
+                            "Cash returned cannot be greater than the current paid amount"
+                        );
+                    }
+
+                    // ======================================
+                    // DUE ADJUSTMENT VALIDATION
+                    // ======================================
+
+                    if (
+                        dueAdjustment >
+                        currentDueAmount +
+                        0.01
+                    ) {
+                        throw new Error(
+                            "Adjusted due cannot be greater than the current due amount"
+                        );
+                    }
+
+                    // ======================================
+                    // CREATE SALE RETURN
+                    // ======================================
+
+                    const saleReturn =
+                        await tx.saleReturn.create(
+                            {
+                                data: {
+                                    saleId:
+                                        sale.id,
+
+                                    customerId:
+                                        sale.customerId,
+
+                                    returnDate:
+                                        new Date(
+                                            returnDate
+                                        ),
+
+                                    totalAmount:
+                                        totalReturnAmount,
+
+                                    cashReturned:
+                                        cashRefund,
+
+                                    adjustedDue:
+                                        dueAdjustment,
+
+                                    reason:
+                                        reason?.trim() ||
+                                        null,
+                                },
+                            }
+                        );
+
+                    // ======================================
+                    // CREATE RETURN ITEMS
+                    // ======================================
+
+                    for (
+                        const item of
+                        returnItems
+                    ) {
+                        await tx.saleReturnItem.create(
+                            {
+                                data: {
+                                    saleReturnId:
+                                        saleReturn.id,
+
+                                    saleItemId:
+                                        item.saleItemId,
+
+                                    batchId:
+                                        item.batchId,
+
+                                    quantity:
+                                        item.quantity,
+
+                                    buyPrice:
+                                        item.buyPrice,
+
+                                    sellPrice:
+                                        item.sellPrice,
+
+                                    totalPrice:
+                                        item.totalPrice,
+
+                                    profitReduced:
+                                        item.profitReduced,
+                                },
+                            }
+                        );
+                    }
+
+                    // ======================================
+                    // UPDATE SALE BALANCE
+                    // ======================================
+                    //
+                    // IMPORTANT:
+                    //
+                    // totalAmount NEVER decreases.
+                    //
+                    // Original invoice remains unchanged.
+                    //
+                    // Example:
+                    //
+                    // Original Sale = ৳400
+                    // Return        = ৳200
+                    //
+                    // Sale.totalAmount remains ৳400.
+                    //
+                    // Only the current financial balance changes.
+                    //
+                    // ======================================
+
+                    const newPaidAmount =
+                        currentPaidAmount -
+                        cashRefund;
+
+                    const newDueAmount =
+                        currentDueAmount -
+                        dueAdjustment;
+
+                    if (
+                        newPaidAmount <
+                        -0.01
+                    ) {
+                        throw new Error(
+                            "Paid amount cannot become negative"
+                        );
+                    }
+
+                    if (
+                        newDueAmount <
+                        -0.01
+                    ) {
+                        throw new Error(
+                            "Due amount cannot become negative"
+                        );
+                    }
+
+                    await tx.sale.update({
                         where: {
-                            saleItemId: saleItem.id,
+                            id: sale.id,
                         },
-                        _sum: {
-                            quantity: true,
+
+                        data: {
+                            // ==================================
+                            // ORIGINAL INVOICE TOTAL
+                            // REMAINS UNCHANGED
+                            // ==================================
+
+                            totalAmount:
+                                sale.totalAmount,
+
+                            // ==================================
+                            // CURRENT PAID BALANCE
+                            // ==================================
+
+                            paidAmount:
+                                Math.max(
+                                    0,
+                                    newPaidAmount
+                                ),
+
+                            // ==================================
+                            // CURRENT DUE BALANCE
+                            // ==================================
+
+                            dueAmount:
+                                Math.max(
+                                    0,
+                                    newDueAmount
+                                ),
                         },
                     });
 
-                const alreadyReturned =
-                    Number(previousReturns._sum.quantity || 0);
+                    // ======================================
+                    // CASH BOOK
+                    // ======================================
 
-                const availableToReturn =
-                    saleItem.quantity - alreadyReturned;
+                    if (
+                        cashRefund > 0
+                    ) {
+                        await tx.cashBook.create({
+                            data: {
+                                transactionDate:
+                                    new Date(
+                                        returnDate
+                                    ),
 
-                if (availableToReturn <= 0) {
-                    throw new Error(
-                        "All quantity for this item has already been returned"
-                    );
-                }
+                                type:
+                                    "Expense",
 
-                if (qty > availableToReturn) {
-                    throw new Error(
-                        `Cannot return ${qty}. Only ${availableToReturn} remaining quantity can be returned`
-                    );
-                }
+                                amount:
+                                    cashRefund,
 
-                const sellPrice = Number(saleItem.sellPrice);
-                const buyPrice = Number(saleItem.buyPrice);
+                                description:
+                                    `Sales Return Refund - Invoice ${sale.invoiceNo}`,
 
-                const totalPrice = qty * sellPrice;
+                                referenceType:
+                                    "SaleReturn",
 
-                const profitReduced =
-                    qty * (sellPrice - buyPrice);
+                                referenceId:
+                                    saleReturn.id,
+                            },
+                        });
+                    }
 
-                totalReturnAmount += totalPrice;
+                    // ======================================
+                    // ACTIVITY LOG
+                    // ======================================
 
-                returnItems.push({
-                    saleItemId: saleItem.id,
-                    batchId: saleItem.batchId,
-                    quantity: qty,
-                    buyPrice,
-                    sellPrice,
-                    totalPrice,
-                    profitReduced,
-                });
+                    await tx.activityLog.create({
+                        data: {
+                            action:
+                                "CREATE",
 
-                // ======================================
-                // RESTORE STOCK
-                // ======================================
+                            module:
+                                "Sale Return",
 
-                await tx.productBatch.update({
-                    where: {
-                        id: saleItem.batchId,
-                    },
-                    data: {
-                        quantityRemaining: {
-                            increment: qty,
+                            referenceId:
+                                saleReturn.id,
+
+                            description:
+                                `Sale Return #${saleReturn.id} created for Invoice ${sale.invoiceNo}`,
                         },
-                    },
-                });
-            }
+                    });
 
-            // ======================================
-            // PAYMENT / DUE ADJUSTMENT
-            // ======================================
+                    // ======================================
+                    // RETURN RESULT
+                    // ======================================
 
-            const cashRefund =
-                Number(cashReturned || 0);
+                    return saleReturn;
+                }
+            );
 
-            const dueAdjustment =
-                Number(adjustedDue || 0);
-
-            if (cashRefund < 0 || dueAdjustment < 0) {
-                throw new Error(
-                    "Cash Returned and Adjusted Due cannot be negative"
-                );
-            }
-
-            const returnAllocationTotal =
-                cashRefund + dueAdjustment;
-
-            if (
-                Math.abs(
-                    returnAllocationTotal -
-                    totalReturnAmount
-                ) > 0.01
-            ) {
-                throw new Error(
-                    `Return amount ৳${totalReturnAmount.toFixed(
-                        2
-                    )} must equal Cash Returned + Adjusted Due`
-                );
-            }
-
-            // ======================================
-            // CHECK PREVIOUS RETURN ADJUSTMENTS
-            // ======================================
-
-            const previousSaleReturns =
-                await tx.saleReturn.findMany({
-                    where: {
-                        saleId: sale.id,
-                    },
-                    select: {
-                        cashReturned: true,
-                        adjustedDue: true,
-                    },
-                });
-
-            const previousCashRefund =
-                previousSaleReturns.reduce(
-                    (sum, item) =>
-                        sum +
-                        Number(item.cashReturned || 0),
-                    0
-                );
-
-            const previousDueAdjustment =
-                previousSaleReturns.reduce(
-                    (sum, item) =>
-                        sum +
-                        Number(item.adjustedDue || 0),
-                    0
-                );
-
-            // Current paid amount available for cash refund
-            const availablePaidForRefund =
-                Number(sale.paidAmount) -
-                previousCashRefund;
-
-            // Current due available for adjustment
-            const availableDueForAdjustment =
-                Number(sale.dueAmount) -
-                previousDueAdjustment;
-
-            if (
-                cashRefund >
-                availablePaidForRefund + 0.01
-            ) {
-                throw new Error(
-                    `Cash refund cannot exceed available paid amount. Available: ৳${availablePaidForRefund.toFixed(
-                        2
-                    )}`
-                );
-            }
-
-            if (
-                dueAdjustment >
-                availableDueForAdjustment + 0.01
-            ) {
-                throw new Error(
-                    `Due adjustment cannot exceed current due amount. Available: ৳${availableDueForAdjustment.toFixed(
-                        2
-                    )}`
-                );
-            }
-
-            // ======================================
-            // CREATE SALE RETURN
-            // ======================================
-
-            const saleReturn =
-                await tx.saleReturn.create({
-                    data: {
-                        saleId: sale.id,
-
-                        customerId:
-                            sale.customerId,
-
-                        returnDate:
-                            new Date(returnDate),
-
-                        totalAmount:
-                            totalReturnAmount,
-
-                        cashReturned:
-                            cashRefund,
-
-                        adjustedDue:
-                            dueAdjustment,
-
-                        reason:
-                            reason?.trim() || null,
-                    },
-                });
-
-            // ======================================
-            // CREATE SALE RETURN ITEMS
-            // ======================================
-
-            for (const item of returnItems) {
-
-                await tx.saleReturnItem.create({
-                    data: {
-                        saleReturnId:
-                            saleReturn.id,
-
-                        saleItemId:
-                            item.saleItemId,
-
-                        batchId:
-                            item.batchId,
-
-                        quantity:
-                            item.quantity,
-
-                        buyPrice:
-                            item.buyPrice,
-
-                        sellPrice:
-                            item.sellPrice,
-
-                        totalPrice:
-                            item.totalPrice,
-
-                        profitReduced:
-                            item.profitReduced,
-                    },
-                });
-            }
-
-            // ======================================
-            // IMPORTANT
-            // ======================================
-            //
-            // DO NOT UPDATE Sale.totalAmount
-            // DO NOT UPDATE Sale.paidAmount
-            // DO NOT UPDATE Sale.dueAmount
-            //
-            // কারণ Sale table-এ original invoice history
-            // preserve করতে হবে।
-            //
-            // Example:
-            //
-            // Original Sale = 400
-            // Paid = 300
-            // Due = 100
-            //
-            // Return = 200
-            //
-            // Invoice-এ original sale 400-ই থাকবে।
-            // Return history আলাদাভাবে থাকবে।
-            //
-            // ======================================
-
-            // ======================================
-            // CASH BOOK
-            // ======================================
-
-            if (cashRefund > 0) {
-
-                await tx.cashBook.create({
-                    data: {
-                        transactionDate:
-                            new Date(returnDate),
-
-                        type: "Expense",
-
-                        amount:
-                            cashRefund,
-
-                        description:
-                            `Sales Return Cash Refund - Invoice ${sale.invoiceNo}`,
-
-                        referenceType:
-                            "SaleReturn",
-
-                        referenceId:
-                            saleReturn.id,
-                    },
-                });
-            }
-
-            // ======================================
-            // ACTIVITY LOG
-            // ======================================
-
-            await tx.activityLog.create({
-                data: {
-                    action: "CREATE",
-
-                    module: "Sale Return",
-
-                    referenceId:
-                        saleReturn.id,
-
-                    description:
-                        `Sale Return #${saleReturn.id} created for Invoice ${sale.invoiceNo}`,
-                },
-            });
-
-            return saleReturn;
-        });
+        // ======================================
+        // SUCCESS RESPONSE
+        // ======================================
 
         return NextResponse.json(
             result,
@@ -457,9 +690,7 @@ export async function POST(request: Request) {
                 status: 201,
             }
         );
-
     } catch (error: unknown) {
-
         console.error(
             "Sale Return POST error:",
             error

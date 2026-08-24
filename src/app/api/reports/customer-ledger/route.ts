@@ -1,20 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
+// ======================================
+// CUSTOMER LEDGER
+// ======================================
+
 export async function GET(request: NextRequest) {
     try {
+        const { searchParams } = new URL(request.url);
 
-        const { searchParams } =
-            new URL(request.url);
-
-        const customerId =
-            searchParams.get("customerId");
+        const customerId = searchParams.get("customerId");
 
         if (!customerId) {
             return NextResponse.json(
                 {
-                    message:
-                        "customerId is required",
+                    message: "customerId is required",
                 },
                 {
                     status: 400,
@@ -22,14 +22,12 @@ export async function GET(request: NextRequest) {
             );
         }
 
-        const parsedCustomerId =
-            Number(customerId);
+        const parsedCustomerId = Number(customerId);
 
         if (!Number.isInteger(parsedCustomerId)) {
             return NextResponse.json(
                 {
-                    message:
-                        "Invalid customerId",
+                    message: "Invalid customerId",
                 },
                 {
                     status: 400,
@@ -41,18 +39,16 @@ export async function GET(request: NextRequest) {
         // CUSTOMER
         // ======================================
 
-        const customer =
-            await prisma.customer.findUnique({
-                where: {
-                    id: parsedCustomerId,
-                },
-            });
+        const customer = await prisma.customer.findUnique({
+            where: {
+                id: parsedCustomerId,
+            },
+        });
 
         if (!customer) {
             return NextResponse.json(
                 {
-                    message:
-                        "Customer not found",
+                    message: "Customer not found",
                 },
                 {
                     status: 404,
@@ -64,25 +60,35 @@ export async function GET(request: NextRequest) {
         // SALES
         // ======================================
 
-        const sales =
-            await prisma.sale.findMany({
-                where: {
-                    customerId:
-                        parsedCustomerId,
-                },
+        const sales = await prisma.sale.findMany({
+            where: {
+                customerId: parsedCustomerId,
+            },
 
-                include: {
-                    saleReturns: {
-                        orderBy: {
-                            returnDate: "asc",
-                        },
+            include: {
+                items: true,
+
+                saleReturns: {
+                    orderBy: {
+                        returnDate: "asc",
+                    },
+
+                    include: {
+                        items: true,
                     },
                 },
 
-                orderBy: {
-                    saleDate: "asc",
+                salePayments: {
+                    orderBy: {
+                        paymentDate: "asc",
+                    },
                 },
-            });
+            },
+
+            orderBy: {
+                saleDate: "asc",
+            },
+        });
 
         // ======================================
         // CUSTOMER PAYMENTS
@@ -91,8 +97,7 @@ export async function GET(request: NextRequest) {
         const payments =
             await prisma.customerPayment.findMany({
                 where: {
-                    customerId:
-                        parsedCustomerId,
+                    customerId: parsedCustomerId,
                 },
 
                 orderBy: {
@@ -101,14 +106,19 @@ export async function GET(request: NextRequest) {
             });
 
         // ======================================
-        // SALE RETURNS
+        // ALL SALE RETURNS
         // ======================================
 
         const saleReturns =
             await prisma.saleReturn.findMany({
                 where: {
-                    customerId:
-                        parsedCustomerId,
+                    customerId: parsedCustomerId,
+                },
+
+                include: {
+                    sale: true,
+
+                    items: true,
                 },
 
                 orderBy: {
@@ -122,62 +132,44 @@ export async function GET(request: NextRequest) {
 
         type LedgerEntry = {
             id: string;
-
-            date: Date | null;
-
+            date: Date;
             type: string;
-
-            reference:
-            | string
-            | number;
-
+            reference: string | number;
             debit: number;
-
             credit: number;
-
             balance: number;
-
             sortOrder: number;
+            description?: string;
         };
 
-        const ledger:
-            LedgerEntry[] = [];
+        const ledger: LedgerEntry[] = [];
 
         // ======================================
-        // OPENING BALANCE
+        // OPENING DUE
         // ======================================
 
         const openingDue =
-            Number(
-                customer.openingDue ?? 0
-            );
+            Number(customer.openingDue ?? 0);
 
         if (openingDue !== 0) {
-
             ledger.push({
-                id:
-                    `opening-${customer.id}`,
+                id: `opening-${customer.id}`,
 
-                date:
-                    customer.createdAt,
+                date: customer.createdAt,
 
-                type:
-                    "Opening Balance",
+                type: "Opening Balance",
 
-                reference:
-                    "-",
+                reference: "-",
 
-                debit:
-                    openingDue,
+                debit: openingDue,
 
-                credit:
-                    0,
+                credit: 0,
 
-                balance:
-                    0,
+                balance: 0,
 
-                sortOrder:
-                    0,
+                sortOrder: 0,
+
+                description: "Opening Balance",
             });
         }
 
@@ -187,51 +179,56 @@ export async function GET(request: NextRequest) {
         //
         // IMPORTANT:
         //
-        // sale.totalAmount এখন original invoice
-        // amount হিসেবে থাকবে।
+        // NEVER use sale.totalAmount here as the
+        // original invoice amount.
         //
-        // তাই এখানে return যোগ করে আবার
-        // original amount বের করার দরকার নেই।
+        // Original amount is calculated from
+        // SaleItem totalPrice.
         //
-        // Example:
+        // This keeps:
         //
         // Original Sale = 400
-        // Return = 200
         //
-        // Ledger Sale = 400
+        // even after:
+        //
+        // Return = 200
         //
         // ======================================
 
         for (const sale of sales) {
+            const itemTotal = sale.items.reduce(
+                (sum, item) =>
+                    sum + Number(item.totalPrice ?? 0),
+                0
+            );
+
+            const discount =
+                Number(sale.discount ?? 0);
+
+            const originalSaleAmount =
+                itemTotal - discount;
 
             ledger.push({
-                id:
-                    `sale-${sale.id}`,
+                id: `sale-${sale.id}`,
 
-                date:
-                    sale.saleDate,
+                date: sale.saleDate,
 
-                type:
-                    "Sale",
+                type: "Sale",
 
-                reference:
-                    sale.invoiceNo,
+                reference: sale.invoiceNo,
 
-                debit:
-                    Number(
-                        Number(
-                            sale.totalAmount
-                        ).toFixed(2)
-                    ),
+                debit: Number(
+                    originalSaleAmount.toFixed(2)
+                ),
 
-                credit:
-                    0,
+                credit: 0,
 
-                balance:
-                    0,
+                balance: 0,
 
-                sortOrder:
-                    1,
+                sortOrder: 1,
+
+                description:
+                    `Sale (${sale.invoiceNo})`,
             });
         }
 
@@ -240,35 +237,27 @@ export async function GET(request: NextRequest) {
         // ======================================
 
         for (const payment of payments) {
-
             ledger.push({
-                id:
-                    `payment-${payment.id}`,
+                id: `payment-${payment.id}`,
 
-                date:
-                    payment.paymentDate,
+                date: payment.paymentDate,
 
-                type:
-                    "Cash Received",
+                type: "Payment",
 
-                reference:
-                    payment.saleId,
+                reference: payment.id,
 
-                debit:
-                    0,
+                debit: 0,
 
-                credit:
-                    Number(
-                        Number(
-                            payment.amount
-                        ).toFixed(2)
-                    ),
+                credit: Number(
+                    payment.amount ?? 0
+                ),
 
-                balance:
-                    0,
+                balance: 0,
 
-                sortOrder:
-                    2,
+                sortOrder: 2,
+
+                description:
+                    `Cash Received`,
             });
         }
 
@@ -276,27 +265,34 @@ export async function GET(request: NextRequest) {
         // SALE RETURNS
         // ======================================
         //
-        // Return total পুরোটা CREDIT হবে।
+        // Return-এর total amount customer-এর
+        // account থেকে কমাবে।
         //
-        // কারণ return হলে customer-এর
-        // payable/receivable কমে।
+        // কিন্তু invoice-এর original sale
+        // amount কমাবে না।
         //
         // Example:
         //
-        // Sale = 400
-        // Paid = 300
-        // Balance = 100
+        // Sale       = 400
+        // Payment    = 300
+        // Due        = 100
         //
-        // Return = 200
-        // Balance = -100
+        // Return     = 200
+        // Cash       = 100
+        // Due adjust = 100
         //
-        // এরপর cash refund = 100
-        // Balance = 0
+        // Return-এর credit = 200
+        //
+        // Final balance:
+        //
+        // 400 - 300 - 200 = -100
+        //
+        // অর্থাৎ customer-এর কাছে দোকানের
+        // ৳100 পাওনা থাকবে।
         //
         // ======================================
 
         for (const saleReturn of saleReturns) {
-
             const returnAmount =
                 Number(
                     saleReturn.totalAmount ?? 0
@@ -312,99 +308,54 @@ export async function GET(request: NextRequest) {
                     saleReturn.adjustedDue ?? 0
                 );
 
-            // ==================================
-            // SALE RETURN
-            // ==================================
+            // ======================================
+            // SAFETY CHECK
+            // ======================================
+            //
+            // Normally:
+            //
+            // totalAmount =
+            // cashReturned + adjustedDue
+            //
+            // ======================================
+
+            const creditAmount =
+                cashReturned +
+                adjustedDue;
 
             ledger.push({
-                id:
-                    `sale-return-${saleReturn.id}`,
+                id: `sale-return-${saleReturn.id}`,
 
-                date:
-                    saleReturn.returnDate,
+                date: saleReturn.returnDate,
 
-                type:
-                    "Sale Return",
+                type: "Sale Return",
 
                 reference:
+                    saleReturn.sale?.invoiceNo ??
                     saleReturn.id,
 
-                debit:
-                    0,
+                debit: 0,
 
-                credit:
-                    Number(
-                        returnAmount.toFixed(2)
-                    ),
+                credit: Number(
+                    creditAmount.toFixed(2)
+                ),
 
-                balance:
-                    0,
+                balance: 0,
 
-                sortOrder:
-                    3,
+                sortOrder: 3,
+
+                description:
+                    `Sale Return (${saleReturn.sale?.invoiceNo ??
+                    saleReturn.id
+                    })`,
             });
-
-            // ==================================
-            // CASH REFUND
-            // ==================================
-            //
-            // Customer-কে cash ফেরত দিলে
-            // সেই credit balance settle হয়।
-            //
-            // তাই Cash Refund = DEBIT
-            //
-            // ==================================
-
-            if (cashReturned > 0) {
-
-                ledger.push({
-                    id:
-                        `cash-refund-${saleReturn.id}`,
-
-                    date:
-                        saleReturn.returnDate,
-
-                    type:
-                        "Cash Refund",
-
-                    reference:
-                        saleReturn.id,
-
-                    debit:
-                        Number(
-                            cashReturned.toFixed(2)
-                        ),
-
-                    credit:
-                        0,
-
-                    balance:
-                        0,
-
-                    sortOrder:
-                        4,
-                });
-            }
         }
 
         // ======================================
-        // SORT
+        // SORT LEDGER
         // ======================================
 
         ledger.sort((a, b) => {
-
-            if (!a.date && !b.date) {
-                return 0;
-            }
-
-            if (!a.date) {
-                return -1;
-            }
-
-            if (!b.date) {
-                return 1;
-            }
-
             const dateDifference =
                 new Date(a.date).getTime() -
                 new Date(b.date).getTime();
@@ -435,42 +386,45 @@ export async function GET(request: NextRequest) {
         let balance = 0;
 
         for (const entry of ledger) {
-
             balance =
                 balance +
                 entry.debit -
                 entry.credit;
 
-            entry.balance =
-                Number(
-                    balance.toFixed(2)
-                );
+            entry.balance = Number(
+                balance.toFixed(2)
+            );
         }
 
         // ======================================
         // TOTAL SALES
         // ======================================
-        //
-        // Original invoice total
-        //
-        // Return বাদ দিয়ে total sales
-        // কমানো হবে না।
-        //
-        // ======================================
 
-        const totalSales =
-            sales.reduce(
-                (sum, sale) => {
-
-                    return (
-                        sum +
-                        Number(
-                            sale.totalAmount ?? 0
-                        )
+        const totalSales = sales.reduce(
+            (sum, sale) => {
+                const itemTotal =
+                    sale.items.reduce(
+                        (itemSum, item) =>
+                            itemSum +
+                            Number(
+                                item.totalPrice ?? 0
+                            ),
+                        0
                     );
-                },
-                0
-            );
+
+                const discount =
+                    Number(
+                        sale.discount ?? 0
+                    );
+
+                return (
+                    sum +
+                    itemTotal -
+                    discount
+                );
+            },
+            0
+        );
 
         // ======================================
         // TOTAL PAYMENTS
@@ -478,237 +432,147 @@ export async function GET(request: NextRequest) {
 
         const totalPayments =
             payments.reduce(
-                (sum, payment) => {
-
-                    return (
-                        sum +
-                        Number(
-                            payment.amount ?? 0
-                        )
-                    );
-                },
+                (sum, payment) =>
+                    sum +
+                    Number(
+                        payment.amount ?? 0
+                    ),
                 0
             );
 
         // ======================================
-        // TOTAL RETURN
+        // TOTAL SALE RETURNS
         // ======================================
 
         const totalSaleReturns =
             saleReturns.reduce(
-                (
-                    sum,
-                    saleReturn
-                ) => {
-
-                    return (
-                        sum +
-                        Number(
-                            saleReturn.totalAmount ??
-                            0
-                        )
-                    );
-                },
+                (sum, saleReturn) =>
+                    sum +
+                    Number(
+                        saleReturn.totalAmount ??
+                        0
+                    ),
                 0
             );
 
         // ======================================
-        // TOTAL CASH REFUND
+        // TOTAL CASH RETURNED
         // ======================================
 
-        const totalCashRefund =
+        const totalCashReturned =
             saleReturns.reduce(
-                (
-                    sum,
-                    saleReturn
-                ) => {
-
-                    return (
-                        sum +
-                        Number(
-                            saleReturn.cashReturned ??
-                            0
-                        )
-                    );
-                },
+                (sum, saleReturn) =>
+                    sum +
+                    Number(
+                        saleReturn.cashReturned ??
+                        0
+                    ),
                 0
             );
 
         // ======================================
-        // TOTAL DUE ADJUSTMENT
+        // TOTAL DUE ADJUSTED
         // ======================================
 
-        const totalDueAdjustment =
+        const totalDueAdjusted =
             saleReturns.reduce(
-                (
-                    sum,
-                    saleReturn
-                ) => {
-
-                    return (
-                        sum +
-                        Number(
-                            saleReturn.adjustedDue ??
-                            0
-                        )
-                    );
-                },
+                (sum, saleReturn) =>
+                    sum +
+                    Number(
+                        saleReturn.adjustedDue ??
+                        0
+                    ),
                 0
             );
 
         // ======================================
-        // CURRENT DUE INVOICES
+        // ORIGINAL CUSTOMER LIABILITY
         // ======================================
 
-        const currentDueInvoices =
-            sales
-                .map((sale) => {
+        const originalReceivable =
+            openingDue +
+            totalSales;
 
-                    const saleReturnDueAdjustment =
-                        sale.saleReturns.reduce(
-                            (
-                                sum,
-                                saleReturn
-                            ) => {
+        // ======================================
+        // FINAL BALANCE
+        // ======================================
 
-                                return (
-                                    sum +
-                                    Number(
-                                        saleReturn.adjustedDue ??
-                                        0
-                                    )
-                                );
-                            },
-                            0
-                        );
-
-                    const currentDue =
-                        Number(
-                            sale.dueAmount ?? 0
-                        ) -
-                        saleReturnDueAdjustment;
-
-                    return {
-                        id:
-                            sale.id,
-
-                        invoiceNo:
-                            sale.invoiceNo,
-
-                        saleDate:
-                            sale.saleDate,
-
-                        totalAmount:
-                            Number(
-                                Number(
-                                    sale.totalAmount
-                                ).toFixed(2)
-                            ),
-
-                        dueAmount:
-                            Number(
-                                Math.max(
-                                    0,
-                                    currentDue
-                                ).toFixed(2)
-                            ),
-                    };
-                })
-                .filter(
-                    (sale) =>
-                        sale.dueAmount >
-                        0.01
-                );
+        const closingBalance =
+            originalReceivable -
+            totalPayments -
+            totalSaleReturns;
 
         // ======================================
         // RESPONSE
         // ======================================
 
         return NextResponse.json({
-
             customer: {
+                id: customer.id,
 
-                id:
-                    customer.id,
+                name: customer.name,
 
-                name:
-                    customer.name,
+                phone: customer.phone,
 
-                phone:
-                    customer.phone,
-
-                address:
-                    customer.address,
+                address: customer.address,
             },
 
             summary: {
+                openingDue: Number(
+                    openingDue.toFixed(2)
+                ),
 
-                openingDue:
-                    Number(
-                        openingDue.toFixed(2)
-                    ),
+                totalSales: Number(
+                    totalSales.toFixed(2)
+                ),
 
-                totalSales:
-                    Number(
-                        totalSales.toFixed(2)
-                    ),
+                totalPayments: Number(
+                    totalPayments.toFixed(2)
+                ),
 
-                totalPayments:
-                    Number(
-                        totalPayments.toFixed(2)
-                    ),
+                totalSaleReturns: Number(
+                    totalSaleReturns.toFixed(2)
+                ),
 
-                totalSaleReturns:
-                    Number(
-                        totalSaleReturns.toFixed(2)
-                    ),
+                totalCashReturned: Number(
+                    totalCashReturned.toFixed(2)
+                ),
 
-                totalCashRefund:
-                    Number(
-                        totalCashRefund.toFixed(2)
-                    ),
+                totalDueAdjusted: Number(
+                    totalDueAdjusted.toFixed(2)
+                ),
 
-                totalDueAdjustment:
-                    Number(
-                        totalDueAdjustment.toFixed(2)
-                    ),
-
-                closingBalance:
-                    Number(
-                        balance.toFixed(2)
-                    ),
+                closingBalance: Number(
+                    closingBalance.toFixed(2)
+                ),
             },
 
-            currentDueInvoices,
+            ledger: ledger.map(
+                (entry) => ({
+                    date: entry.date,
 
-            ledger:
-                ledger.map(
-                    (entry) => ({
+                    type: entry.type,
 
-                        date:
-                            entry.date,
+                    reference:
+                        entry.reference,
 
-                        type:
-                            entry.type,
+                    debit: entry.debit,
 
-                        reference:
-                            entry.reference,
+                    credit: entry.credit,
 
-                        debit:
-                            entry.debit,
+                    balance:
+                        entry.balance,
 
-                        credit:
-                            entry.credit,
-
-                        balance:
-                            entry.balance,
-                    })
-                ),
+                    description:
+                        entry.description,
+                })
+            ),
         });
-
     } catch (error: any) {
-
-        console.error(error);
+        console.error(
+            "Customer Ledger Error:",
+            error
+        );
 
         return NextResponse.json(
             {
@@ -716,7 +580,8 @@ export async function GET(request: NextRequest) {
                     "Failed to fetch customer ledger",
 
                 error:
-                    error.message,
+                    error?.message ??
+                    String(error),
             },
             {
                 status: 500,
